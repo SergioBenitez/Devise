@@ -1,0 +1,19 @@
+[package]
+name = "from_form_value"
+version = "0.1.0"
+authors = ["Sergio Benitez <sb@sergio.bz>"]
+publish = false
+
+[lib]
+proc-macro = true
+
+[[bin]]
+name = "main"
+path = "src/main.rs"
+
+[dependencies]
+quote = "0.6"
+derive_utils = { path = "../../lib" }
+
+# used by main.rs
+rocket = "0.3"
