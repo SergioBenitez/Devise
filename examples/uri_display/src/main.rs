@@ -141,14 +141,14 @@ pub struct WrappedThing<T> {
     other: T,
 }
 
-#[derive(UriDisplay)]
-pub struct Bad {
-    inner: usize,
-}
+// #[derive(UriDisplay)]
+// pub struct Bad {
+//     inner: usize,
+// }
 
-#[derive(UriDisplay)]
-pub enum Worse {
-    Some,
-}
+// #[derive(UriDisplay)]
+// pub enum Worse {
+//     Some,
+// }
 
 pub fn main() { }

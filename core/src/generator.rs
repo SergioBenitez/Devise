@@ -3,7 +3,7 @@ use proc_macro::{TokenStream, Diagnostic};
 use proc_macro2::TokenStream as TokenStream2;
 
 use spanned::Spanned;
-use ext::{FieldsExt, CodegenFieldsExt, PathExt};
+use ext::{FieldsExt, StructExt, CodegenFieldsExt, PathExt};
 
 use field::Field;
 use variant::Variant;
@@ -71,20 +71,12 @@ pub fn null_enum_mapper(gen: &DeriveGenerator, data: &syn::DataEnum) -> TokenStr
 }
 
 pub fn default_struct_mapper(gen: &DeriveGenerator, data: &syn::DataStruct) -> TokenStream2 {
-    let field = data.fields.iter().enumerate().map(|(index, field)| {
-        let wrapped_field = Field { matched: false, index, field };
-        gen.field_mapper()(gen, wrapped_field)
-    });
-
+    let field = data.fields().map(|field| gen.field_mapper()(gen, field));
     quote!(#(#field)*)
 }
 
 pub fn default_variant_mapper(gen: &DeriveGenerator, data: Variant) -> TokenStream2 {
-    let field = data.fields.iter().enumerate().map(|(index, field)| {
-        let wrapped_field = Field { matched: true, index, field };
-        gen.field_mapper()(gen, wrapped_field)
-    });
-
+    let field = data.fields().map(|field| gen.field_mapper()(gen, field));
     quote!({ #(#field)* })
 }
 
@@ -176,6 +168,15 @@ impl DeriveGenerator {
         if !self.enum_mappers.is_empty() {
             let last = self.enum_mappers.len() - 1;
             self.enum_mappers[last] = f;
+        }
+
+        self
+    }
+
+    pub fn map_struct(&mut self, f: StructMapFn) -> &mut Self {
+        if !self.struct_mappers.is_empty() {
+            let last = self.struct_mappers.len() - 1;
+            self.struct_mappers[last] = f;
         }
 
         self
@@ -333,6 +334,15 @@ impl DeriveGenerator {
                 #(#function_code)*
             }
         }.into())
+    }
+
+    pub fn debug(&mut self) -> &mut Self {
+        match self._to_tokens() {
+            Ok(tokens) => println!("Tokens produced: {}", tokens.to_string()),
+            Err(e) => println!("Error produced: {:?}", e)
+        }
+
+        self
     }
 
     pub fn to_tokens(&mut self) -> TokenStream {

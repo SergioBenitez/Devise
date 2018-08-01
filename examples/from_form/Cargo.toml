@@ -17,3 +17,4 @@ derive_utils = { path = "../../lib" }
 
 # used by main.rs
 rocket = "0.3"
+syn = "*" # temporary

@@ -39,4 +39,10 @@ impl<'f> Variant<'f> {
             }
         }
     }
+
+    pub fn fields(&self) -> impl Iterator<Item = ::field::Field> {
+        self.fields.iter().enumerate().map(|(index, field)| {
+            ::field::Field { matched: true, index, field }
+        })
+    }
 }

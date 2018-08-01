@@ -28,6 +28,10 @@ impl<'f> Field<'f> {
             quote_spanned!(span => self.#member)
         }
     }
+
+    pub fn parent_attrs(&self) -> Option<&[syn::Attribute]> {
+        None
+    }
 }
 
 impl<'f> Deref for Field<'f> {

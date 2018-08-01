@@ -14,6 +14,7 @@ mod variant;
 mod generator;
 mod support;
 
+pub mod meta;
 pub mod ext;
 pub mod parser;
 

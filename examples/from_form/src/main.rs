@@ -6,7 +6,9 @@ extern crate rocket;
 use rocket::http::RawStr;
 
 enum FormError<'f> {
-    MissingField(&'f RawStr)
+    Missing(&'f RawStr),
+    BadValue(&'f RawStr, &'f RawStr),
+    Unknown(&'f RawStr, &'f RawStr),
 }
 
 #[derive(FromForm)]
@@ -22,12 +24,20 @@ struct Other {
     completed: bool,
 }
 
+// #[derive(FromForm)]
+// struct NextTodoTask<'f, 'a> {
+//     description: String,
+//     raw_description: &'f RawStr,
+//     other: &'a RawStr,
+//     completed: bool,
+// }
+
 #[derive(FromForm)]
-struct TodoTask<'f, 'a> {
-    description: String,
-    raw_description: &'f RawStr,
-    other: &'a RawStr,
-    completed: bool,
+struct Another {
+    #[form(field = "type")]
+    field: String,
+    #[form(field = "a b")]
+    other: usize,
 }
 
 pub fn main() { }
