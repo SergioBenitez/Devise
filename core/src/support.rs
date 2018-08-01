@@ -8,16 +8,14 @@ bitflags! {
     }
 }
 
-// TODO: Differentiate between structs with named fields and tuple structs?
-// maybe const Struct = 0b11;
-// maybe const NamedStruct = 0b01;
-// maybe const TupleStruct = 0b10;
 bitflags! {
     pub struct DataSupport: u32 {
-        const None   = 0b000;
-        const Struct = 0b001;
-        const Enum   = 0b010;
-        const Union  = 0b100;
-        const All    = 0b111;
+        const None        = 0b0000;
+        const TupleStruct = 0b0001;
+        const NamedStruct = 0b0010;
+        const Struct      = 0b0011;
+        const Enum        = 0b0100;
+        const Union       = 0b1000;
+        const All         = 0b1111;
     }
 }

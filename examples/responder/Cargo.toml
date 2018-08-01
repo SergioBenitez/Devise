@@ -14,7 +14,7 @@ path = "src/main.rs"
 [dependencies]
 quote = "0.6"
 derive_utils = { path = "../../lib" }
-proc_macro2 = "*"
+proc-macro2 = "*"
 
 # used by main.rs
 rocket = "0.3"

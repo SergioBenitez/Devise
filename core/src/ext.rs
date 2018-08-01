@@ -40,6 +40,14 @@ pub trait CodegenFieldsExt {
     fn ref_match_tokens(&self) -> TokenStream2;
 }
 
+pub trait Split2<A, B>: Sized + Iterator {
+    fn split2(self) -> (Vec<A>, Vec<B>);
+}
+
+pub trait Split3<A, B, C>: Sized + Iterator {
+    fn split3(self) -> (Vec<A>, Vec<B>, Vec<C>);
+}
+
 impl MemberExt for Member {
     fn named(&self) -> Option<&Ident> {
         match *self {
@@ -225,5 +233,30 @@ impl CodegenFieldsExt for Fields {
             .map(field_to_match_ref);
 
         self.surround(quote!(#(#refs),*))
+    }
+}
+
+impl<A, B, I: IntoIterator<Item = (A, B)> + Iterator> Split2<A, B> for I {
+    fn split2(self) -> (Vec<A>, Vec<B>) {
+        let (mut first, mut second) = (vec![], vec![]);
+        self.into_iter().for_each(|(a, b)| {
+            first.push(a);
+            second.push(b);
+        });
+
+        (first, second)
+    }
+}
+
+impl<A, B, C, I: IntoIterator<Item = (A, B, C)> + Iterator> Split3<A, B, C> for I {
+    fn split3(self) -> (Vec<A>, Vec<B>, Vec<C>) {
+        let (mut first, mut second, mut third) = (vec![], vec![], vec![]);
+        self.into_iter().for_each(|(a, b, c)| {
+            first.push(a);
+            second.push(b);
+            third.push(c);
+        });
+
+        (first, second, third)
     }
 }

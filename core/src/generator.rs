@@ -2,8 +2,8 @@ use syn;
 use proc_macro::{TokenStream, Diagnostic};
 use proc_macro2::TokenStream as TokenStream2;
 
-use ext::{CodegenFieldsExt, PathExt};
 use spanned::Spanned;
+use ext::{FieldsExt, CodegenFieldsExt, PathExt};
 
 use field::Field;
 use variant::Variant;
@@ -13,6 +13,7 @@ pub type Result<T> = ::std::result::Result<T, Diagnostic>;
 
 pub type EnumValidatorFn = fn(&DeriveGenerator, &::syn::DataEnum) -> Result<()>;
 pub type StructValidatorFn = fn(&DeriveGenerator, &::syn::DataStruct) -> Result<()>;
+pub type GenericsValidatorFn = fn(&DeriveGenerator, &::syn::Generics) -> Result<()>;
 
 pub type TypeGenericMapFn = fn(&DeriveGenerator, &syn::Ident, &syn::TypeParam) -> TokenStream2;
 
@@ -30,7 +31,9 @@ pub struct DeriveGenerator {
     crate data_support: DataSupport,
     crate enum_validator: EnumValidatorFn,
     crate struct_validator: StructValidatorFn,
+    crate generics_validator: GenericsValidatorFn,
     crate type_generic_mapper: Option<TypeGenericMapFn>,
+    crate generic_replacements: Vec<(usize, usize)>,
     crate functions: Vec<FunctionFn>,
     crate enum_mappers: Vec<EnumMapFn>,
     crate struct_mappers: Vec<StructMapFn>,
@@ -48,6 +51,10 @@ pub fn default_enum_mapper(gen: &DeriveGenerator, data: &syn::DataEnum) -> Token
     });
 
     quote! {
+        // FIXME: Check if we can also use id_match_tokens due to match
+        // ergonomics. I don't think so, though. If we can't, then ask (in
+        // `function`) whether receiver is `&self`, `&mut self` or `self` and
+        // bind match accordingly.
         match self {
             #(#enum_name::#variant #fields => #expression),*
         }
@@ -82,7 +89,7 @@ pub fn default_variant_mapper(gen: &DeriveGenerator, data: Variant) -> TokenStre
 }
 
 pub fn default_field_mapper(_gen: &DeriveGenerator, _data: Field) -> TokenStream2 {
-    panic!("must override field or something above")
+    TokenStream2::new()
 }
 
 impl DeriveGenerator {
@@ -96,8 +103,10 @@ impl DeriveGenerator {
             generic_support: GenericSupport::None,
             data_support: DataSupport::None,
             type_generic_mapper: None,
+            generic_replacements: vec![],
             enum_validator: |_, _| Ok(()),
             struct_validator: |_, _| Ok(()),
+            generics_validator: |_, _| Ok(()),
             functions: vec![],
             enum_mappers: vec![],
             struct_mappers: vec![],
@@ -126,6 +135,11 @@ impl DeriveGenerator {
         self
     }
 
+    pub fn validate_generics(&mut self, f: GenericsValidatorFn) -> &mut Self {
+        self.generics_validator = f;
+        self
+    }
+
     pub fn push_default_mappers(&mut self) {
         self.enum_mappers.push(default_enum_mapper);
         self.struct_mappers.push(default_struct_mapper);
@@ -135,6 +149,11 @@ impl DeriveGenerator {
 
     pub fn map_type_generic(&mut self, f: TypeGenericMapFn) -> &mut Self {
         self.type_generic_mapper = Some(f);
+        self
+    }
+
+    pub fn replace_generic(&mut self, trait_gen: usize, impl_gen: usize) -> &mut Self {
+        self.generic_replacements.push((trait_gen, impl_gen));
         self
     }
 
@@ -188,15 +207,23 @@ impl DeriveGenerator {
 
         // Step 1: Run all validators.
         // Step 1a: First, check for data support.
+        let (span, support) = (self.input.span(), self.data_support);
         match self.input.data {
-            Data::Struct(..) if !self.data_support.contains(DataSupport::Struct) => {
-                return Err(self.input.span().error("unsupported data kind: struct"));
+            Data::Struct(ref data) => {
+                let named = data.fields.is_named();
+                if named && !support.contains(DataSupport::NamedStruct) {
+                    return Err(span.error("named structs are not supported"));
+                }
+
+                if !named && !support.contains(DataSupport::TupleStruct) {
+                    return Err(span.error("tuple structs are not supported"));
+                }
             }
-            Data::Enum(..) if !self.data_support.contains(DataSupport::Enum) => {
-                return Err(self.input.span().error("unsupported data kind: enum"));
+            Data::Enum(..) if !support.contains(DataSupport::Enum) => {
+                return Err(span.error("enums are not supported"));
             }
-            Data::Union(..) if !self.data_support.contains(DataSupport::Union) => {
-                return Err(self.input.span().error("unsupported data kind: union"));
+            Data::Union(..) if !support.contains(DataSupport::Union) => {
+                return Err(span.error("unions are not supported"));
             }
             _ => { /* we're okay! */ }
         }
@@ -204,25 +231,28 @@ impl DeriveGenerator {
         // Step 1b: Second, check for generics support.
         for generic in &self.input.generics.params {
             use syn::GenericParam::*;
+
+            let (span, support) = (generic.span(), self.generic_support);
             match generic {
-                Type(..) if !self.generic_support.contains(GenericSupport::Type) => {
-                    return Err(generic.span().error("type generics are not supported"));
+                Type(..) if !support.contains(GenericSupport::Type) => {
+                    return Err(span.error("type generics are not supported"));
                 }
-                Lifetime(..) if !self.generic_support.contains(GenericSupport::Lifetime) => {
-                    return Err(generic.span().error("lifetime generics are not supported"));
+                Lifetime(..) if !support.contains(GenericSupport::Lifetime) => {
+                    return Err(span.error("lifetime generics are not supported"));
                 }
-                Const(..) if !self.generic_support.contains(GenericSupport::Const) => {
-                    return Err(generic.span().error("const generics are not supported"));
+                Const(..) if !support.contains(GenericSupport::Const) => {
+                    return Err(span.error("const generics are not supported"));
                 }
                 _ => { /* we're okay! */ }
             }
         }
 
         // Step 1c: Third, run the custom validators.
+        (self.generics_validator)(self, &self.input.generics)?;
         match self.input.data {
             Data::Struct(ref data) => (self.struct_validator)(self, data)?,
-            Data::Union(ref _data) => unimplemented!("can't custom validate unions yet"),
             Data::Enum(ref data) => (self.enum_validator)(self, data)?,
+            Data::Union(ref _data) => unimplemented!("union custom validation"),
         }
 
         // Step 2: Generate the code!
@@ -255,12 +285,38 @@ impl DeriveGenerator {
         // struct with generics from the trait.
         let mut generics_for_impl_generics = generics.clone();
         if let Some(trait_generics) = self.trait_path.generics() {
-            for generic in trait_generics {
-                if let syn::GenericArgument::Lifetime(lifetime) = generic {
-                    let param = LifetimeDef::new(lifetime.clone());
-                    generics_for_impl_generics.params.insert(0, param.into());
+            for (i, generic) in trait_generics.iter().enumerate() {
+                let param: GenericParam = if let syn::GenericArgument::Lifetime(lifetime) = generic {
+                    LifetimeDef::new(lifetime.clone()).into()
                 } else {
                     unimplemented!("can only handle lifetime generics in traits")
+                };
+
+                let replacement = self.generic_replacements.iter()
+                    .filter(|r| r.0 == i)
+                    .next();
+
+                if let Some((_, j)) = replacement {
+                    use syn::{punctuated::Punctuated, token::Comma};
+
+                    // Step 2d.0: Perform a generic replacement if requested.
+                    let replace_in = |ps: &mut Punctuated<GenericParam, Comma>| -> bool {
+                        ps.iter_mut().nth(*j)
+                            .map(|impl_param| *impl_param = param.clone())
+                            .is_some()
+                    };
+
+                    // Step 2d.1: If it fails, insert a new impl generic.
+                    // NOTE: It's critical that `generics` is attempted first!
+                    // Otherwise, we might replace generics that don't exist in
+                    // the user's type.
+                    if !replace_in(&mut generics.params)
+                         || !replace_in(&mut generics_for_impl_generics.params) {
+                        generics_for_impl_generics.params.insert(0, param.clone());
+                    }
+                } else {
+                    // Step 2d.1: Otherwise, insert a new impl generic.
+                    generics_for_impl_generics.params.insert(0, param);
                 }
             }
         }
@@ -268,13 +324,6 @@ impl DeriveGenerator {
         // Step 2e: Split the generics, but use the `impl_generics` from above.
         let (impl_gen, _, _) = generics_for_impl_generics.split_for_impl();
         let (_, ty_gen, where_gen) = generics.split_for_impl();
-
-        // FIXME: Check if we can also use id_match_tokens due to match
-        // ergonomics. I don't think so, though. If we can't, then ask (in
-        // `function`) whether receiver is `&self`, `&mut self` or `self` and
-        // bind match accordingly.
-        // TODO: Port FromForm to this.
-        // TODO: Port Responder to this.
 
         // Step 2b: Generate the complete implementation.
         let target = &self.input.ident;
