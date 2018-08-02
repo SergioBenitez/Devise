@@ -1,4 +1,6 @@
 use syn::{self, Meta::*, Lit::*};
+use proc_macro2::TokenStream as TokenStream2;
+use quote::ToTokens;
 
 use generator::Result;
 use spanned::Spanned;
@@ -51,7 +53,7 @@ impl FromMeta for usize {
             return Err(nv.lit.span().error("invalid value: expected unsigned integer"));
         }
 
-        Err(meta.span().error("expected key/value pair"))
+        Err(meta.span().error("malformed parameter: expected key/value pair"))
     }
 }
 
@@ -65,13 +67,15 @@ impl FromMeta for String {
             return Err(nv.lit.span().error("invalid value: expected string"));
         }
 
-        Err(meta.span().error("expected key/value pair"))
+        Err(meta.span().error("malformed parameter: expected key/value pair"))
     }
 }
 
 impl FromMeta for bool {
     fn from_meta(meta: &syn::Meta) -> Result<Self> {
-        if let NameValue(nv) = meta {
+        if let Word(_) = meta {
+            return Ok(true);
+        } else  if let NameValue(nv) = meta {
             if let Bool(ref b) = nv.lit {
                 return Ok(b.value);
             }
@@ -79,7 +83,8 @@ impl FromMeta for bool {
             return Err(nv.lit.span().error("invalid value: expected boolean"));
         }
 
-        Err(meta.span().error("expected key/value pair"))
+        Err(meta.span() .error("malformed parameter: \
+                               expected key/value pair or bare parameter"))
     }
 }
 
@@ -98,12 +103,18 @@ impl<T: FromMeta> FromMeta for SpanWrapped<T> {
         let (key_span, value_span) = if let NameValue(nv) = meta {
             (Spanned::span(&nv.ident), nv.lit.span())
         } else {
-            return Err(meta.span().error("expected key/value pair"));
+            return Err(meta.span().error("malformed parameter: expected key/value pair"))
         };
 
         T::from_meta(meta).map(|value| SpanWrapped {
             meta_span: meta.span(),
             key_span, value_span, value
         })
+    }
+}
+
+impl<T: ToTokens> ToTokens for SpanWrapped<T> {
+    fn to_tokens(&self, tokens: &mut TokenStream2) {
+        self.value.to_tokens(tokens)
     }
 }

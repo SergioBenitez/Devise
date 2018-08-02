@@ -33,13 +33,6 @@ pub trait PathExt {
     fn generics(&self) -> Option<&Punctuated<GenericArgument, Comma>>;
 }
 
-pub trait CodegenFieldsExt {
-    fn surround(&self, tokens: TokenStream2) -> TokenStream2;
-    fn ignore_tokens(&self) -> TokenStream2;
-    fn id_match_tokens(&self) -> TokenStream2;
-    fn ref_match_tokens(&self) -> TokenStream2;
-}
-
 pub trait StructExt {
     fn fields<'a>(&'a self) -> Box<Iterator<Item = ::field::Field<'a>> + 'a>;
 }
@@ -215,35 +208,35 @@ pub fn field_to_match_ref((i, field): (usize, &Field)) -> TokenStream2 {
     }
 }
 
-impl CodegenFieldsExt for Fields {
-    fn surround(&self, tokens: TokenStream2) -> TokenStream2 {
-        match *self {
-            Fields::Named(..) => quote!({ #tokens }),
-            Fields::Unnamed(..) => quote!(( #tokens )),
-            Fields::Unit => quote!()
-        }
-    }
+// impl CodegenFieldsExt for Fields {
+//     fn surround(&self, tokens: TokenStream2) -> TokenStream2 {
+//         match *self {
+//             Fields::Named(..) => quote!({ #tokens }),
+//             Fields::Unnamed(..) => quote!(( #tokens )),
+//             Fields::Unit => quote!()
+//         }
+//     }
 
-    fn ignore_tokens(&self) -> TokenStream2 {
-        self.surround(quote!(..))
-    }
+//     fn ignore_tokens(&self) -> TokenStream2 {
+//         self.surround(quote!(..))
+//     }
 
-    fn id_match_tokens(&self) -> TokenStream2 {
-        let idents = self.iter()
-            .enumerate()
-            .map(field_to_match);
+//     fn id_match_tokens(&self) -> TokenStream2 {
+//         let idents = self.iter()
+//             .enumerate()
+//             .map(field_to_match);
 
-        self.surround(quote!(#(#idents),*))
-    }
+//         self.surround(quote!(#(#idents),*))
+//     }
 
-    fn ref_match_tokens(&self) -> TokenStream2 {
-        let refs = self.iter()
-            .enumerate()
-            .map(field_to_match_ref);
+//     fn ref_match_tokens(&self) -> TokenStream2 {
+//         let refs = self.iter()
+//             .enumerate()
+//             .map(field_to_match_ref);
 
-        self.surround(quote!(#(#refs),*))
-    }
-}
+//         self.surround(quote!(#(#refs),*))
+//     }
+// }
 
 impl<A, B, I: IntoIterator<Item = (A, B)> + Iterator> Split2<A, B> for I {
     fn split2(self) -> (Vec<A>, Vec<B>) {
@@ -267,14 +260,6 @@ impl<A, B, C, I: IntoIterator<Item = (A, B, C)> + Iterator> Split3<A, B, C> for 
         });
 
         (first, second, third)
-    }
-}
-
-impl StructExt for DataStruct {
-    fn fields<'a>(&'a self) -> Box<Iterator<Item = ::field::Field<'a>> + 'a> {
-        Box::new(self.fields.iter().enumerate().map(|(index, field)| {
-            ::field::Field { matched: false, index, field }
-        }))
     }
 }
 

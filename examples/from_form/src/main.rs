@@ -36,7 +36,7 @@ struct Other {
 struct Another {
     #[form(field = "type")]
     field: String,
-    #[form(field = "a b")]
+    #[form(field = "field")]
     other: usize,
 }
 

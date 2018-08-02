@@ -3,42 +3,38 @@
 #[macro_use] extern crate quote;
 extern crate derive_utils;
 extern crate proc_macro;
-extern crate syn;
 
 use proc_macro::{TokenStream, Span};
-use derive_utils::{*, ext::FieldsExt};
-use syn::Fields;
+use derive_utils::*;
 
 const NO_EMPTY_FIELDS: &str = "fieldless structs or variants are not allowed";
 const NO_NULLARY: &str = "nullary items are not allowed";
 const NO_EMPTY_ENUMS: &str = "empty enums are not allowed";
 const ONLY_ONE_UNNAMED: &str = "tuple structs or variants must have exactly one field";
 
-fn validate_fields(fields: &Fields, parent_span: Span) -> Result<()> {
-    if fields.is_empty() {
+fn validate_fields(fields: Fields, parent_span: Span) -> Result<()> {
+    if fields.count() == 0 {
         return Err(parent_span.error(NO_EMPTY_FIELDS))
+    } else if fields.are_unnamed() && fields.count() > 1 {
+        return Err(fields.span().error(ONLY_ONE_UNNAMED));
+    } else if fields.are_unit() {
+        return Err(parent_span.error(NO_NULLARY));
     }
 
-    match fields {
-        Fields::Unnamed(ref u_fields) if u_fields.unnamed.len() > 1 => {
-            Err(u_fields.unnamed.span().error(ONLY_ONE_UNNAMED))
-        },
-        Fields::Unit => Err(parent_span.error(NO_NULLARY)),
-        _ => Ok(())
-    }
+    Ok(())
 }
 
-fn validate_struct(gen: &DeriveGenerator, data: &syn::DataStruct) -> Result<()> {
-    validate_fields(&data.fields, gen.input.span())
+fn validate_struct(gen: &DeriveGenerator, data: Struct) -> Result<()> {
+    validate_fields(data.fields(), gen.input.span())
 }
 
-fn validate_enum(gen: &DeriveGenerator, data: &syn::DataEnum) -> Result<()> {
-    if data.variants.is_empty() {
+fn validate_enum(gen: &DeriveGenerator, data: Enum) -> Result<()> {
+    if data.variants().count() == 0 {
         return Err(gen.input.span().error(NO_EMPTY_ENUMS));
     }
 
-    for variant in data.variants.iter() {
-        validate_fields(&variant.fields, variant.span())?;
+    for variant in data.variants() {
+        validate_fields(variant.fields(), variant.span())?;
     }
 
     Ok(())

@@ -1,25 +1,28 @@
 #![feature(proc_macro_diagnostic, proc_macro_span)]
 #![feature(crate_visibility_modifier)]
+#![feature(concat_idents)]
 #![recursion_limit="256"]
 
-extern crate syn;
+pub extern crate syn;
+pub extern crate proc_macro2;
+#[macro_use] pub extern crate quote;
+
 extern crate proc_macro;
-extern crate proc_macro2;
-#[macro_use] extern crate quote;
 #[macro_use] extern crate bitflags;
 
 mod spanned;
 mod field;
-mod variant;
 mod generator;
 mod support;
+mod derived;
+mod meta;
 
-pub mod meta;
 pub mod ext;
 pub mod parser;
 
-pub use field::Field;
-pub use variant::Variant;
+pub use field::*;
 pub use support::{GenericSupport, DataSupport};
 pub use generator::*;
 pub use spanned::*;
+pub use meta::*;
+pub use derived::*;

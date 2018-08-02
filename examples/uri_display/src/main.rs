@@ -4,7 +4,7 @@ extern crate smallvec;
 
 use std::fmt;
 use smallvec::SmallVec;
-use rocket::http::uri::URI;
+use rocket::http::uri::Uri;
 
 pub struct Formatter<'i, 'f: 'i> {
     prefixes: SmallVec<[&'static str; 3]>,
@@ -84,7 +84,7 @@ pub trait UriDisplay {
 
 impl UriDisplay for str {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.write_raw(&URI::percent_encode(self))
+        f.write_raw(&Uri::percent_encode(self))
     }
 }
 

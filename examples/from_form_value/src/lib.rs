@@ -5,7 +5,7 @@ extern crate derive_utils;
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
-use derive_utils::{*, ext::FieldsExt};
+use derive_utils::*;
 
 #[proc_macro_derive(FromFormValue)]
 pub fn derive_from_form_value(input: TokenStream) -> TokenStream {
@@ -14,8 +14,8 @@ pub fn derive_from_form_value(input: TokenStream) -> TokenStream {
         .data_support(DataSupport::Enum)
         .validate_enum(|generator, data| {
             // This derive only works for variants that are nullary.
-            for variant in data.variants.iter() {
-                if !variant.fields.is_empty() {
+            for variant in data.variants() {
+                if !variant.fields().count() == 0 {
                     return Err(variant.span().error("variants cannot have fields"));
                 }
             }
@@ -38,7 +38,7 @@ pub fn derive_from_form_value(input: TokenStream) -> TokenStream {
                 ::std::result::Result::Err(value)
             }
         })
-        .map_enum(null_enum_mapper)
+        .try_map_enum(null_enum_mapper)
         .map_variant(|_, variant| {
             let variant_str = variant.ident.to_string();
             let builder = variant.builder(|_| unreachable!());

@@ -3,27 +3,71 @@ use proc_macro::{TokenStream, Diagnostic};
 use proc_macro2::TokenStream as TokenStream2;
 
 use spanned::Spanned;
-use ext::{FieldsExt, StructExt, CodegenFieldsExt, PathExt};
+use ext::{FieldsExt, PathExt};
 
-use field::Field;
-use variant::Variant;
+use field::{Field, Fields};
 use support::{GenericSupport, DataSupport};
+use derived::{Derived, Variant, Struct, Enum};
 
 pub type Result<T> = ::std::result::Result<T, Diagnostic>;
+pub type MapResult = Result<TokenStream2>;
 
-pub type EnumValidatorFn = fn(&DeriveGenerator, &::syn::DataEnum) -> Result<()>;
-pub type StructValidatorFn = fn(&DeriveGenerator, &::syn::DataStruct) -> Result<()>;
+pub type EnumValidatorFn = fn(&DeriveGenerator, Enum) -> Result<()>;
+pub type StructValidatorFn = fn(&DeriveGenerator, Struct) -> Result<()>;
 pub type GenericsValidatorFn = fn(&DeriveGenerator, &::syn::Generics) -> Result<()>;
-
-pub type TypeGenericMapFn = fn(&DeriveGenerator, &syn::Ident, &syn::TypeParam) -> TokenStream2;
+pub type FieldsValidatorFn = fn(&DeriveGenerator, Fields) -> Result<()>;
 
 pub type FunctionFn = fn(&DeriveGenerator, TokenStream2) -> TokenStream2;
-pub type EnumMapFn = fn(&DeriveGenerator, &syn::DataEnum) -> TokenStream2;
-pub type StructMapFn = fn(&DeriveGenerator, &syn::DataStruct) -> TokenStream2;
-pub type VariantMapFn = fn(&DeriveGenerator, Variant) -> TokenStream2;
-pub type FieldMapFn = fn(&DeriveGenerator, Field) -> TokenStream2;
+pub type TypeGenericMapFn = fn(&DeriveGenerator, &syn::Ident, &syn::TypeParam) -> TokenStream2;
 
-#[derive(Clone)]
+macro_rules! validator {
+    ($fn_name:ident: $validate_fn_type:ty, $field:ident) => {
+        pub fn $fn_name(&mut self, f: $validate_fn_type) -> &mut Self {
+            self.$field = f;
+            self
+        }
+    }
+}
+
+
+macro_rules! mappers {
+    ($(($map_f:ident, $try_f:ident, $get_f:ident): $type:ty, $vec:ident),*) => (
+        crate fn push_default_mappers(&mut self) {
+            $(self.$vec.push(Box::new(concat_idents!(default_, $get_f)));)*
+        }
+
+        $(
+            pub fn $map_f<F>(&mut self, f: F) -> &mut Self
+                where F: Fn(&DeriveGenerator, $type) -> TokenStream2 + 'static
+            {
+                if !self.$vec.is_empty() {
+                    let last = self.$vec.len() - 1;
+                    self.$vec[last] = Box::new(move |g, v| Ok(f(g, v)));
+                }
+
+                self
+            }
+
+            pub fn $try_f<F>(&mut self, f: F) -> &mut Self
+                where F: Fn(&DeriveGenerator, $type) -> MapResult + 'static
+            {
+                if !self.$vec.is_empty() {
+                    let last = self.$vec.len() - 1;
+                    self.$vec[last] = Box::new(f);
+                }
+
+                self
+            }
+
+            pub fn $get_f(&self) -> &Box<Fn(&DeriveGenerator, $type) -> MapResult> {
+                assert!(!self.$vec.is_empty());
+                let last = self.$vec.len() - 1;
+                &self.$vec[last]
+            }
+        )*
+    )
+}
+
 pub struct DeriveGenerator {
     pub input: syn::DeriveInput,
     pub trait_path: syn::Path,
@@ -32,56 +76,62 @@ pub struct DeriveGenerator {
     crate enum_validator: EnumValidatorFn,
     crate struct_validator: StructValidatorFn,
     crate generics_validator: GenericsValidatorFn,
+    crate fields_validator: FieldsValidatorFn,
     crate type_generic_mapper: Option<TypeGenericMapFn>,
     crate generic_replacements: Vec<(usize, usize)>,
     crate functions: Vec<FunctionFn>,
-    crate enum_mappers: Vec<EnumMapFn>,
-    crate struct_mappers: Vec<StructMapFn>,
-    crate variant_mappers: Vec<VariantMapFn>,
-    crate field_mappers: Vec<FieldMapFn>,
+    crate enum_mappers: Vec<Box<Fn(&DeriveGenerator, Enum) -> MapResult>>,
+    crate struct_mappers: Vec<Box<Fn(&DeriveGenerator, Struct) -> MapResult>>,
+    crate variant_mappers: Vec<Box<Fn(&DeriveGenerator, Variant) -> MapResult>>,
+    crate fields_mappers: Vec<Box<Fn(&DeriveGenerator, Fields) -> MapResult>>,
+    crate field_mappers: Vec<Box<Fn(&DeriveGenerator, Field) -> MapResult>>,
 }
 
-pub fn default_enum_mapper(gen: &DeriveGenerator, data: &syn::DataEnum) -> TokenStream2 {
-    let variant = data.variants.iter().map(|v| &v.ident);
-    let fields = data.variants.iter().map(|v| v.fields.id_match_tokens());
-    let enum_name = ::std::iter::repeat(&gen.input.ident);
-    let expression = data.variants.iter().map(|variant| {
-        let variant = Variant { parent: gen.input.ident.clone(), variant };
-        gen.variant_mapper()(gen, variant)
-    });
+pub fn default_enum_mapper(gen: &DeriveGenerator, data: Enum) -> MapResult {
+    let variant = data.variants().map(|v| &v.value.ident);
+    let fields = data.variants().map(|v| v.fields().match_tokens());
+    let enum_name = ::std::iter::repeat(&data.derive_input.ident);
+    let expression = data.variants()
+        .map(|v| gen.variant_mapper()(gen, v))
+        .collect::<Result<Vec<_>>>()?;
 
-    quote! {
+    Ok(quote! {
         // FIXME: Check if we can also use id_match_tokens due to match
         // ergonomics. I don't think so, though. If we can't, then ask (in
         // `function`) whether receiver is `&self`, `&mut self` or `self` and
         // bind match accordingly.
         match self {
-            #(#enum_name::#variant #fields => #expression),*
+            #(#enum_name::#variant #fields => { #expression }),*
         }
-    }
+    })
 }
 
-pub fn null_enum_mapper(gen: &DeriveGenerator, data: &syn::DataEnum) -> TokenStream2 {
-    let tokens = data.variants.iter().map(|variant| {
-        let variant = Variant { parent: gen.input.ident.clone(), variant };
-        gen.variant_mapper()(gen, variant)
-    });
+pub fn null_enum_mapper(gen: &DeriveGenerator, data: Enum) -> MapResult {
+    let expression = data.variants()
+        .map(|v| gen.variant_mapper()(gen, v))
+        .collect::<Result<Vec<_>>>()?;
 
-    quote!(#(#tokens)*)
+    Ok(quote!(#(#expression)*))
 }
 
-pub fn default_struct_mapper(gen: &DeriveGenerator, data: &syn::DataStruct) -> TokenStream2 {
-    let field = data.fields().map(|field| gen.field_mapper()(gen, field));
-    quote!(#(#field)*)
+pub fn default_struct_mapper(gen: &DeriveGenerator, data: Struct) -> MapResult {
+    gen.fields_mapper()(gen, data.fields())
 }
 
-pub fn default_variant_mapper(gen: &DeriveGenerator, data: Variant) -> TokenStream2 {
-    let field = data.fields().map(|field| gen.field_mapper()(gen, field));
-    quote!({ #(#field)* })
+pub fn default_variant_mapper(gen: &DeriveGenerator, data: Variant) -> MapResult {
+    gen.fields_mapper()(gen, data.fields())
 }
 
-pub fn default_field_mapper(_gen: &DeriveGenerator, _data: Field) -> TokenStream2 {
-    TokenStream2::new()
+pub fn default_field_mapper(_gen: &DeriveGenerator, _data: Field) -> MapResult {
+    Ok(TokenStream2::new())
+}
+
+pub fn default_fields_mapper(g: &DeriveGenerator, fields: Fields) -> MapResult {
+    let field = fields.iter()
+        .map(|field| g.field_mapper()(g, field))
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(quote!({ #(#field)* }))
 }
 
 impl DeriveGenerator {
@@ -99,11 +149,13 @@ impl DeriveGenerator {
             enum_validator: |_, _| Ok(()),
             struct_validator: |_, _| Ok(()),
             generics_validator: |_, _| Ok(()),
+            fields_validator: |_, _| Ok(()),
             functions: vec![],
             enum_mappers: vec![],
             struct_mappers: vec![],
             variant_mappers: vec![],
             field_mappers: vec![],
+            fields_mappers: vec![],
         }
     }
 
@@ -117,28 +169,6 @@ impl DeriveGenerator {
         self
     }
 
-    pub fn validate_enum(&mut self, f: EnumValidatorFn) -> &mut Self {
-        self.enum_validator = f;
-        self
-    }
-
-    pub fn validate_struct(&mut self, f: StructValidatorFn) -> &mut Self {
-        self.struct_validator = f;
-        self
-    }
-
-    pub fn validate_generics(&mut self, f: GenericsValidatorFn) -> &mut Self {
-        self.generics_validator = f;
-        self
-    }
-
-    pub fn push_default_mappers(&mut self) {
-        self.enum_mappers.push(default_enum_mapper);
-        self.struct_mappers.push(default_struct_mapper);
-        self.variant_mappers.push(default_variant_mapper);
-        self.field_mappers.push(default_field_mapper);
-    }
-
     pub fn map_type_generic(&mut self, f: TypeGenericMapFn) -> &mut Self {
         self.type_generic_mapper = Some(f);
         self
@@ -149,58 +179,23 @@ impl DeriveGenerator {
         self
     }
 
+    validator!(validate_enum: EnumValidatorFn, enum_validator);
+    validator!(validate_struct: StructValidatorFn, struct_validator);
+    validator!(validate_generics: GenericsValidatorFn, generics_validator);
+    validator!(validate_fields: FieldsValidatorFn, fields_validator);
+
     pub fn function(&mut self, f: FunctionFn) -> &mut Self {
         self.functions.push(f);
         self.push_default_mappers();
         self
     }
 
-    pub fn map_variant(&mut self, f: VariantMapFn) -> &mut Self {
-        if !self.variant_mappers.is_empty() {
-            let last = self.variant_mappers.len() - 1;
-            self.variant_mappers[last] = f;
-        }
-
-        self
-    }
-
-    pub fn map_enum(&mut self, f: EnumMapFn) -> &mut Self {
-        if !self.enum_mappers.is_empty() {
-            let last = self.enum_mappers.len() - 1;
-            self.enum_mappers[last] = f;
-        }
-
-        self
-    }
-
-    pub fn map_struct(&mut self, f: StructMapFn) -> &mut Self {
-        if !self.struct_mappers.is_empty() {
-            let last = self.struct_mappers.len() - 1;
-            self.struct_mappers[last] = f;
-        }
-
-        self
-    }
-
-    pub fn map_field(&mut self, f: FieldMapFn) -> &mut Self {
-        if !self.field_mappers.is_empty() {
-            let last = self.field_mappers.len() - 1;
-            self.field_mappers[last] = f;
-        }
-
-        self
-    }
-
-    pub fn variant_mapper(&self) -> &VariantMapFn {
-        assert!(!self.variant_mappers.is_empty());
-        let last = self.variant_mappers.len() - 1;
-        &self.variant_mappers[last]
-    }
-
-    pub fn field_mapper(&self) -> &FieldMapFn {
-        assert!(!self.field_mappers.is_empty());
-        let last = self.field_mappers.len() - 1;
-        &self.field_mappers[last]
+    mappers! {
+        (map_struct, try_map_struct, struct_mapper): Struct, struct_mappers,
+        (map_enum, try_map_enum, enum_mapper): Enum, enum_mappers,
+        (map_variant, try_map_variant, variant_mapper): Variant, variant_mappers,
+        (map_fields, try_map_fields, fields_mapper): Fields, fields_mappers,
+        (map_field, try_map_field, field_mapper): Field, field_mappers
     }
 
     fn _to_tokens(&mut self) -> Result<TokenStream> {
@@ -251,8 +246,18 @@ impl DeriveGenerator {
         // Step 1c: Third, run the custom validators.
         (self.generics_validator)(self, &self.input.generics)?;
         match self.input.data {
-            Data::Struct(ref data) => (self.struct_validator)(self, data)?,
-            Data::Enum(ref data) => (self.enum_validator)(self, data)?,
+            Data::Struct(ref data) => {
+                let derived = Derived::from(&self.input, data);
+                (self.struct_validator)(self, derived)?;
+                (self.fields_validator)(self, derived.fields())?;
+            }
+            Data::Enum(ref data) => {
+                let derived = Derived::from(&self.input, data);
+                (self.enum_validator)(self, derived)?;
+                for variant in derived.variants() {
+                    (self.fields_validator)(self, variant.fields())?;
+                }
+            }
             Data::Union(ref _data) => unimplemented!("union custom validation"),
         }
 
@@ -262,9 +267,15 @@ impl DeriveGenerator {
         for i in 0..self.functions.len() {
             let function = self.functions[i];
             let inner = match self.input.data {
-                Data::Struct(ref data) => self.struct_mappers[i](self, data),
+                Data::Struct(ref data) => {
+                    let derived = Derived::from(&self.input, data);
+                    self.struct_mappers[i](self, derived)?
+                }
+                Data::Enum(ref data) => {
+                    let derived = Derived::from(&self.input, data);
+                    self.enum_mappers[i](self, derived)?
+                }
                 Data::Union(ref _data) => unimplemented!("can't gen unions yet"),
-                Data::Enum(ref data) => self.enum_mappers[i](self, data),
             };
 
             function_code.push(function(self, inner));
@@ -276,18 +287,19 @@ impl DeriveGenerator {
         // Step 2c: Add additional where bounds if the user asked for it.
         if let Some(type_mapper) = self.type_generic_mapper {
             for ty in self.input.generics.type_params() {
-                let clause = syn::parse2(type_mapper(self, &ty.ident, ty)).expect("yo");
+                let new_ty = type_mapper(self, &ty.ident, ty);
+                let clause = syn::parse2(new_ty).expect("yo");
                 generics.make_where_clause().predicates.push(clause);
             }
         }
 
         // Step 2d: Add any generics the user supplied.
-        // TODO: Allow the user to say we should replace generics from the
-        // struct with generics from the trait.
         let mut generics_for_impl_generics = generics.clone();
         if let Some(trait_generics) = self.trait_path.generics() {
             for (i, generic) in trait_generics.iter().enumerate() {
-                let param: GenericParam = if let syn::GenericArgument::Lifetime(lifetime) = generic {
+                use ::syn::GenericArgument::Lifetime;
+
+                let param: GenericParam = if let Lifetime(lifetime) = generic {
                     LifetimeDef::new(lifetime.clone()).into()
                 } else {
                     unimplemented!("can only handle lifetime generics in traits")
