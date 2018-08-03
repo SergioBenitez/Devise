@@ -2,8 +2,7 @@ use syn;
 use quote::ToTokens;
 
 use proc_macro2::TokenStream as TokenStream2;
-use field::{Field, Fields, FieldParent};
-use ext::FieldsExt;
+use field::{Field, FieldParent, Fields};
 
 #[derive(Debug)]
 pub struct Derived<'p, T: 'p> {
@@ -50,12 +49,12 @@ impl<'f> Variant<'f> {
         let variant = &self.ident;
         let expression = self.fields().iter().map(f);
         let enum_name = &self.derive_input.ident;
-        if self.fields.is_named() {
+        if self.fields().are_named() {
             let field_name = self.fields.iter().map(|f| f.ident.as_ref().unwrap());
             quote! {
                 #enum_name::#variant { #(#field_name: #expression),* }
             }
-        } else if self.fields.is_unnamed() {
+        } else if self.fields().are_unnamed() {
             quote! {
                 #enum_name::#variant(#(#expression),*)
             }
@@ -67,7 +66,7 @@ impl<'f> Variant<'f> {
     }
 
     pub fn fields(self) -> Fields<'f> {
-        Fields(FieldParent::Variant(self))
+        FieldParent::Variant(self).fields()
     }
 }
 
@@ -80,6 +79,6 @@ impl<'p> Enum<'p> {
 
 impl<'p> Struct<'p> {
     pub fn fields(self) -> Fields<'p> {
-        Fields(FieldParent::Struct(self))
+        FieldParent::Struct(self).fields()
     }
 }

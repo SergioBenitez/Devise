@@ -3,7 +3,7 @@ use proc_macro::{TokenStream, Diagnostic};
 use proc_macro2::TokenStream as TokenStream2;
 
 use spanned::Spanned;
-use ext::{FieldsExt, PathExt};
+use ext::PathExt;
 
 use field::{Field, Fields};
 use support::{GenericSupport, DataSupport};
@@ -206,7 +206,7 @@ impl DeriveGenerator {
         let (span, support) = (self.input.span(), self.data_support);
         match self.input.data {
             Data::Struct(ref data) => {
-                let named = data.fields.is_named();
+                let named = Struct::from(&self.input, data).fields().are_named();
                 if named && !support.contains(DataSupport::NamedStruct) {
                     return Err(span.error("named structs are not supported"));
                 }

@@ -1,9 +1,6 @@
 #![feature(proc_macro_diagnostic, proc_macro_span)]
 #![recursion_limit="256"]
 
-// extern crate syn;
-// extern crate proc_macro2;
-
 extern crate proc_macro;
 #[macro_use] extern crate quote;
 extern crate derive_utils_core;

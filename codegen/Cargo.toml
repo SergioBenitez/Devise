@@ -9,6 +9,4 @@ proc-macro = true
 
 [dependencies]
 quote = "0.6"
-# proc-macro2 = { version = "0.4", features = ["nightly"] }
-# syn = { version = "0.14", features = ["full", "extra-traits"] }
 derive_utils_core = { path = "../core/" }
