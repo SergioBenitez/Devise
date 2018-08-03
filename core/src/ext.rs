@@ -12,6 +12,13 @@ pub trait TypeExt {
     fn with_stripped_lifetimes(&self) -> Type;
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum GenericKind { Lifetime, Type, Binding, Const, }
+
+pub trait GenericExt {
+    fn kind(&self) -> GenericKind;
+}
+
 pub trait Split2<A, B>: Sized + Iterator {
     fn split2(self) -> (Vec<A>, Vec<B>);
 }
@@ -167,4 +174,25 @@ fn strip_bounds(bounds: &mut Punctuated<TypeParamBound, token::Add>) {
 
         Some(pair)
     }).collect();
+}
+
+impl GenericExt for GenericArgument {
+    fn kind(&self) -> GenericKind {
+        match *self {
+            GenericArgument::Lifetime(..) => GenericKind::Lifetime,
+            GenericArgument::Type(..) => GenericKind::Type,
+            GenericArgument::Binding(..) => GenericKind::Binding,
+            GenericArgument::Const(..) => GenericKind::Const,
+        }
+    }
+}
+
+impl GenericExt for GenericParam {
+    fn kind(&self) -> GenericKind {
+        match *self {
+            GenericParam::Lifetime(..) => GenericKind::Lifetime,
+            GenericParam::Type(..) => GenericKind::Type,
+            GenericParam::Const(..) => GenericKind::Const,
+        }
+    }
 }

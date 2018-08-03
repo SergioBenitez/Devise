@@ -19,6 +19,19 @@ struct TodoTask<'f> {
 }
 
 #[derive(FromForm)]
+struct YetOneMore<'f, T> {
+    description: String,
+    raw_description: &'f RawStr,
+    other: T,
+}
+
+#[derive(FromForm)]
+struct Oops<T> {
+    description: String,
+    other: T,
+}
+
+#[derive(FromForm)]
 struct Other {
     description: String,
     completed: bool,

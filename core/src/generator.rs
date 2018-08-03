@@ -3,7 +3,7 @@ use proc_macro::{TokenStream, Diagnostic};
 use proc_macro2::TokenStream as TokenStream2;
 
 use spanned::Spanned;
-use ext::PathExt;
+use ext::{PathExt, GenericExt};
 
 use field::{Field, Fields};
 use support::{GenericSupport, DataSupport};
@@ -28,7 +28,6 @@ macro_rules! validator {
         }
     }
 }
-
 
 macro_rules! mappers {
     ($(($map_f:ident, $try_f:ident, $get_f:ident): $type:ty, $vec:ident),*) => (
@@ -305,6 +304,9 @@ impl DeriveGenerator {
                     unimplemented!("can only handle lifetime generics in traits")
                 };
 
+                // Step 2d.0: Perform a generic replacement if requested. Here,
+                // we determine if this generic in the trait is going to replace
+                // a generic in the user's type.
                 let replacement = self.generic_replacements.iter()
                     .filter(|r| r.0 == i)
                     .next();
@@ -312,14 +314,16 @@ impl DeriveGenerator {
                 if let Some((_, j)) = replacement {
                     use syn::{punctuated::Punctuated, token::Comma};
 
-                    // Step 2d.0: Perform a generic replacement if requested.
+                    // Step 2d.1: Actually perform the replacement.
                     let replace_in = |ps: &mut Punctuated<GenericParam, Comma>| -> bool {
-                        ps.iter_mut().nth(*j)
+                        ps.iter_mut()
+                            .filter(|param| param.kind() == generic.kind())
+                            .nth(*j)
                             .map(|impl_param| *impl_param = param.clone())
                             .is_some()
                     };
 
-                    // Step 2d.1: If it fails, insert a new impl generic.
+                    // Step 2d.2: If it fails, insert a new impl generic.
                     // NOTE: It's critical that `generics` is attempted first!
                     // Otherwise, we might replace generics that don't exist in
                     // the user's type.
@@ -328,7 +332,7 @@ impl DeriveGenerator {
                         generics_for_impl_generics.params.insert(0, param.clone());
                     }
                 } else {
-                    // Step 2d.1: Otherwise, insert a new impl generic.
+                    // Step 2d.2: Otherwise, insert a new impl generic.
                     generics_for_impl_generics.params.insert(0, param);
                 }
             }
