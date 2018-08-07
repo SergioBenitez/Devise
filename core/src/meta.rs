@@ -30,7 +30,14 @@ pub trait FromMeta: Sized {
     fn from_attrs(name: &str, attrs: &[syn::Attribute]) -> Option<Result<Self>> {
         let tokens = name.parse().expect("`name` contained invalid tokens");
         let path = syn::parse(tokens).expect("`name` was not a valid path");
-        let attr = attrs.iter().filter(|attr| attr.path == path).next()?;
+        let mut matches = attrs.iter().filter(|attr| attr.path == path);
+        let attr = matches.next()?;
+
+        if let Some(extra) = matches.next() {
+            let msg = format!("duplicate invocation of `{}` attribute", name);
+            return Some(Err(extra.span().error(msg)));
+        }
+
         Some(Self::from_attr(name, attr))
     }
 

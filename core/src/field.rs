@@ -24,11 +24,18 @@ impl<'p> FieldParent<'p> {
     }
 
     pub fn fields(self) -> Fields<'p> {
-        let (span, kind) = match self {
+        let (mut span, kind) = match self {
             FieldParent::Variant(v) => (v.fields.span(), (&v.value.fields).into()),
             FieldParent::Struct(s) => (s.fields.span(), (&s.value.fields).into()),
             FieldParent::Union(u) => (u.fields.span(), FieldKind::Named(&u.value.fields.named)),
         };
+
+        if let FieldKind::Unit = kind {
+            span = match self {
+                FieldParent::Variant(v) => v.span(),
+                _ => self.input().span(),
+            };
+        }
 
         Fields { parent: self, kind, span }
     }
@@ -85,6 +92,10 @@ impl<'f> Fields<'f> {
             parent: self.parent,
             field: Derived::from(self.parent.input(), field),
         })
+    }
+
+    pub fn is_empty(self) -> bool {
+        self.count() == 0
     }
 
     pub fn count(self) -> usize {

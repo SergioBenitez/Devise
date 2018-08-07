@@ -30,7 +30,7 @@ pub fn derive_from_meta(input: TokenStream) -> TokenStream {
                     if __meta.name() == #name {
                         if #ident.is_some() {
                             return Err(__meta.span().error(format!(
-                                        "duplicate parameter: {}", #name)));
+                                        "duplicate attribute parameter: {}", #name)));
                         }
 
                         #ident = Some(<#ty>::from_meta(&__meta)?);
@@ -41,7 +41,7 @@ pub fn derive_from_meta(input: TokenStream) -> TokenStream {
                 let builder = quote_spanned! { span =>
                     #ident: #ident.or_else(::derive_utils::FromMeta::default)
                         .ok_or_else(|| __meta.span().error(format!(
-                                    "missing field: `{}`", #name)))?,
+                                    "missing required attribute parameter: `{}`", #name)))?,
                 };
 
                 (constructor, matcher, builder)
@@ -52,7 +52,7 @@ pub fn derive_from_meta(input: TokenStream) -> TokenStream {
                     ::derive_utils::syn::Meta::List(ref __l) => __l,
                     _ => return Err(__meta.span()
                                     .error("malformed attribute")
-                                    .help("expected syntax: (key = value, ..)"))
+                                    .help("expected syntax: #[attr(key = value, ..)]"))
                 };
 
                 #(#constructors)*
@@ -65,7 +65,7 @@ pub fn derive_from_meta(input: TokenStream) -> TokenStream {
 
                     #(#matchers)*
 
-                    let __msg = format!("unexpected parameter: {}", __meta.name());
+                    let __msg = format!("unexpected attribute parameter: {}", __meta.name());
                     return Err(__meta.span().error(__msg));
                 }
 
