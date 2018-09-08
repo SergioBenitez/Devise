@@ -18,7 +18,6 @@ mod derived;
 mod meta;
 
 pub mod ext;
-pub mod parser;
 
 pub use field::*;
 pub use support::{GenericSupport, DataSupport};

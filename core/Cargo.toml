@@ -7,5 +7,5 @@ publish = false
 [dependencies]
 quote = "0.6"
 proc-macro2 = { version = "0.4", features = ["nightly"] }
-syn = { version = "0.14", features = ["full", "extra-traits"] }
+syn = { version = "0.15", features = ["full", "extra-traits"] }
 bitflags = "1.0"
