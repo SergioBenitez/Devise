@@ -28,7 +28,9 @@ pub trait FromMeta: Sized {
             let list = MetaItemList { ident: &list.ident, iter: &list.nested };
             Self::from_meta(MetaItem::List(list))
         } else {
-            Err(meta.span().error("malformed attribute: expected list"))
+            Err(meta.span()
+                    .error("malformed attribute: expected list")
+                    .help(format!("expected syntax: #[{}(key = value, ..)]", name)))
         }
     }
 

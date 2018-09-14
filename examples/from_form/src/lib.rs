@@ -1,7 +1,7 @@
 #![feature(proc_macro_diagnostic)]
 
 #[macro_use] extern crate quote;
-#[macro_use] extern crate derive_utils;
+extern crate derive_utils;
 extern crate proc_macro;
 
 use proc_macro::{Span, TokenStream};
