@@ -5,7 +5,7 @@
 extern crate proc_macro;
 
 use proc_macro::{Span, TokenStream};
-use derive_utils::{*, syn, ext::{TypeExt, Split3}};
+use derive_utils::{*, ext::{TypeExt, Split3}};
 
 #[derive(FromMeta)]
 struct Form {
@@ -29,13 +29,13 @@ fn is_valid_field_name(s: &str) -> bool {
 }
 
 impl FromMeta for FormField {
-    fn from_meta(meta: &syn::Meta) -> Result<Self> {
-        let string = <SpanWrapped<String>>::from_meta(meta)?;
-        if !is_valid_field_name(&string.value) {
-            return Err(string.value_span.error("invalid form field name"));
+    fn from_meta(meta: MetaItem) -> Result<Self> {
+        let string = String::from_meta(meta)?;
+        if !is_valid_field_name(&string) {
+            return Err(meta.value_span().error("invalid form field name"));
         }
 
-        Ok(FormField { span: string.value_span, name: string.value })
+        Ok(FormField { span: meta.value_span(), name: string })
     }
 }
 

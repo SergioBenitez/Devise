@@ -15,7 +15,7 @@ mod field;
 mod generator;
 mod support;
 mod derived;
-mod meta;
+mod from_meta;
 
 pub mod ext;
 
@@ -23,5 +23,5 @@ pub use field::*;
 pub use support::{GenericSupport, DataSupport};
 pub use generator::*;
 pub use spanned::*;
-pub use meta::*;
+pub use from_meta::*;
 pub use derived::*;

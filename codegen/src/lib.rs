@@ -6,69 +6,138 @@ extern crate proc_macro;
 extern crate derive_utils_core;
 
 use proc_macro::TokenStream;
-use derive_utils_core::{*, ext::Split3};
+use derive_utils_core::*;
 
-#[proc_macro_derive(FromMeta)]
+struct Naked(bool);
+
+impl FromMeta for Naked {
+    fn from_meta(meta: MetaItem) -> Result<Naked> {
+        if let MetaItem::List(list) = meta {
+            if list.iter.len() != 1 {
+                return Err(list.span().error("expected exactly one parameter"));
+            }
+
+            let item = list.iter().next().unwrap();
+            if let MetaItem::Ident(ident) = item {
+                if ident == "naked" {
+                    return Ok(Naked(true));
+                }
+            }
+
+            Err(item.span().error("expected `naked`"))
+        } else {
+            Err(meta.span().error("malformed attribute: expected list"))
+        }
+    }
+}
+
+#[proc_macro_derive(FromMeta, attributes(meta))]
 pub fn derive_from_meta(input: TokenStream) -> TokenStream {
     DeriveGenerator::build_for(input, "::derive_utils::FromMeta")
         .data_support(DataSupport::NamedStruct)
         .function(|_, inner| quote! {
             fn from_meta(
-                __meta: &::derive_utils::syn::Meta
+                __meta: ::derive_utils::MetaItem
             ) -> ::derive_utils::Result<Self> {
                 #inner
             }
         })
+        .validate_fields(|_, fields| {
+            for f in fields.iter() {
+                Naked::from_attrs("meta", &f.attrs).unwrap_or(Ok(Naked(false)))?;
+            }
+
+            Ok(())
+        })
         .map_struct(|_, data| {
-            let (constructors, matchers, builders) = data.fields().iter().map(|f| {
+            let naked = |field: &Field| -> bool {
+                Naked::from_attrs("meta", &field.attrs)
+                    .unwrap_or(Ok(Naked(false)))
+                    .expect("checked in `validate_fields`")
+                    .0
+            };
+
+            let constructors = data.fields().iter().map(|f| {
+                let (ident, span) = (f.ident.as_ref().unwrap(), f.span().into());
+                quote_spanned!(span => let mut #ident = None;)
+            });
+
+            let naked_matchers = data.fields().iter().filter(naked).map(|f| {
                 let (ident, span) = (f.ident.as_ref().unwrap(), f.span().into());
                 let (name, ty) = (ident.to_string(), &f.ty);
 
-                let constructor = quote_spanned!(span => let mut #ident = None;);
+                quote_spanned! { span =>
+                    match __list.next() {
+                        Some(__i@MetaItem::Literal(_)) => {
+                            #ident = Some(<#ty>::from_meta(__i)?)
+                        },
+                        Some(item) => return Err(item.span().error(
+                            "unexpected named parameter: expected bare literal")),
+                        None => return Err(__span.error(
+                            format!("missing expected parameter: `{}`", #name))),
+                    };
+                }
+            });
 
-                let matcher = quote_spanned! { span =>
-                    if __meta.name() == #name {
+            let named_matchers = data.fields().iter().filter(|f| !naked(f)).map(|f| {
+                let (ident, span) = (f.ident.as_ref().unwrap(), f.span().into());
+                let (name, ty) = (ident.to_string(), &f.ty);
+
+                quote_spanned! { span =>
+                    if __name == #name {
                         if #ident.is_some() {
-                            return Err(__meta.span().error(format!(
-                                        "duplicate attribute parameter: {}", #name)));
+                            return Err(__span.error(
+                                format!("duplicate attribute parameter: {}", #name)));
                         }
 
-                        #ident = Some(<#ty>::from_meta(&__meta)?);
+                        #ident = Some(<#ty>::from_meta(__meta)?);
                         continue;
                     }
-                };
+                }
+            });
 
-                let builder = quote_spanned! { span =>
+            let builders = data.fields().iter().map(|f| {
+                let (ident, span) = (f.ident.as_ref().unwrap(), f.span().into());
+                let name = ident.to_string();
+
+                quote_spanned! { span =>
                     #ident: #ident.or_else(::derive_utils::FromMeta::default)
-                        .ok_or_else(|| __meta.span().error(format!(
-                                    "missing required attribute parameter: `{}`", #name)))?,
-                };
-
-                (constructor, matcher, builder)
-            }).split3();
+                    .ok_or_else(|| __span.error(
+                        format!("missing required attribute parameter: `{}`", #name)))?,
+                }
+            });
 
             quote! {
-                let __list = match __meta {
-                    ::derive_utils::syn::Meta::List(ref __l) => __l,
-                    _ => return Err(__meta.span()
-                                    .error("malformed attribute")
+                // First, check that the attribute is a list: name(list, ..) and
+                // generate __list: iterator over the items in the attribute.
+                let __span = __meta.span();
+                let mut __list = match __meta {
+                    ::derive_utils::MetaItem::List(__l) => __l.iter(),
+                    _ => return Err(__span.error("malformed attribute")
                                     .help("expected syntax: #[attr(key = value, ..)]"))
                 };
 
+                // Set up the constructors for all the variables.
                 #(#constructors)*
 
-                for __nested in &__list.nested {
-                    let __meta = match __nested {
-                        ::derive_utils::syn::NestedMeta::Meta(__m) => __m,
-                        _ => return Err(__nested.span().error("unexpected literal"))
+                // Then, parse all of the naked meta items.
+                #(#naked_matchers)*
+
+                // Parse the rest as non-naked meta items.
+                for __meta in __list {
+                    let __span = __meta.span();
+                    let __name = match __meta.name() {
+                        Some(__ident) => __ident,
+                        None => return Err(__span.error("expected key/value pair"))
                     };
 
-                    #(#matchers)*
+                    #(#named_matchers)*
 
-                    let __msg = format!("unexpected attribute parameter: {}", __meta.name());
-                    return Err(__meta.span().error(__msg));
+                    let __msg = format!("unexpected attribute parameter: `{}`", __name);
+                    return Err(__span.error(__msg));
                 }
 
+                // Finally, build up the structure.
                 Ok(Self { #(#builders)* })
             }
         })
