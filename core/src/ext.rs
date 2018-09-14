@@ -13,7 +13,7 @@ pub trait TypeExt {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
-pub enum GenericKind { Lifetime, Type, Binding, Const, }
+pub enum GenericKind { Lifetime, Type, Binding, Const, Constraint }
 
 pub trait GenericExt {
     fn kind(&self) -> GenericKind;
@@ -29,7 +29,7 @@ pub trait Split3<A, B, C>: Sized + Iterator {
 
 impl PathExt for Path {
     fn is(&self, global: bool, segments: &[&str]) -> bool {
-        if self.global() != global || self.segments.len() != segments.len() {
+        if self.leading_colon.is_some() != global || self.segments.len() != segments.len() {
             return false;
         }
 
@@ -144,6 +144,7 @@ fn strip_path(path: &mut Path) {
                         Lifetime(_) => return None,
                         Type(ref mut ty) => strip(ty),
                         Binding(ref mut inner) => strip(&mut inner.ty),
+                        Constraint(ref mut inner) => strip_bounds(&mut inner.bounds),
                         Const(..) => { /* ? */ }
                     }
 
@@ -182,6 +183,7 @@ impl GenericExt for GenericArgument {
             GenericArgument::Lifetime(..) => GenericKind::Lifetime,
             GenericArgument::Type(..) => GenericKind::Type,
             GenericArgument::Binding(..) => GenericKind::Binding,
+            GenericArgument::Constraint(..) => GenericKind::Constraint,
             GenericArgument::Const(..) => GenericKind::Const,
         }
     }
