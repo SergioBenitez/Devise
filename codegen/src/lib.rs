@@ -68,7 +68,7 @@ pub fn derive_from_meta(input: TokenStream) -> TokenStream {
 
                 quote_spanned! { span =>
                     match __list.next() {
-                        Some(__i@MetaItem::Literal(_)) => {
+                        Some(__i@::derive_utils::MetaItem::Literal(_)) => {
                             #ident = Some(<#ty>::from_meta(__i)?)
                         },
                         Some(item) => return Err(item.span().error(
@@ -108,6 +108,8 @@ pub fn derive_from_meta(input: TokenStream) -> TokenStream {
             });
 
             quote! {
+                use ::derive_utils::Spanned;
+
                 // First, check that the attribute is a list: name(list, ..) and
                 // generate __list: iterator over the items in the attribute.
                 let __span = __meta.span();
