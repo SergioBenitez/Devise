@@ -59,7 +59,7 @@ pub fn derive_from_meta(input: TokenStream) -> TokenStream {
 
             let constructors = data.fields().iter().map(|f| {
                 let (ident, span) = (f.ident.as_ref().unwrap(), f.span().into());
-                quote_spanned!(span => let mut #ident = None;)
+                quote_spanned!(span => #[allow(unused_assignments)] let mut #ident = None;)
             });
 
             let naked_matchers = data.fields().iter().filter(naked).map(|f| {
