@@ -63,6 +63,29 @@ impl<'a> MetaItem<'a> {
         }
     }
 
+    pub fn description(&self) -> &'static str {
+        match self {
+            MetaItem::Ident(..) => "identifier",
+            MetaItem::Literal(syn::Lit::Str(..)) => "string literal",
+            MetaItem::Literal(syn::Lit::ByteStr(..)) => "byte string literal",
+            MetaItem::Literal(syn::Lit::Byte(..)) => "byte literal",
+            MetaItem::Literal(syn::Lit::Char(..)) => "charater literal",
+            MetaItem::Literal(syn::Lit::Int(..)) => "intenger literal",
+            MetaItem::Literal(syn::Lit::Float(..)) => "float literal",
+            MetaItem::Literal(syn::Lit::Bool(..)) => "boolean literal",
+            MetaItem::Literal(syn::Lit::Verbatim(..)) => "literal",
+            MetaItem::KeyValue(..) => "key/value pair",
+            MetaItem::List(..) => "list",
+        }
+    }
+
+    pub fn is_bare(&self) -> bool {
+        match self {
+            MetaItem::Ident(..) | MetaItem::Literal(..) => true,
+            MetaItem::KeyValue(..) | MetaItem::List(..) => false,
+        }
+    }
+
     pub fn lit(&self) -> Result<&syn::Lit> {
         match self {
             MetaItem::Literal(lit) | MetaItem::KeyValue(_, lit) => Ok(lit),

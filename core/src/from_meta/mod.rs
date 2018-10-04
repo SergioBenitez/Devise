@@ -57,6 +57,20 @@ pub trait FromMeta: Sized {
     }
 }
 
+impl FromMeta for isize {
+    fn from_meta(meta: MetaItem) -> Result<Self> {
+        if let Int(i) = meta.lit()? {
+            if i.value() <= isize::max_value() as u64 {
+                return Ok(i.value() as isize);
+            }
+
+            return Err(meta.value_span().error("value is out of range for `isize`"));
+        }
+
+        Err(meta.value_span().error("invalid value: expected integer literal"))
+    }
+}
+
 impl FromMeta for usize {
     fn from_meta(meta: MetaItem) -> Result<Self> {
         if let Int(i) = meta.lit()? {

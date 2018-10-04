@@ -68,11 +68,11 @@ pub fn derive_from_meta(input: TokenStream) -> TokenStream {
 
                 quote_spanned! { span =>
                     match __list.next() {
-                        Some(__i@::derive_utils::MetaItem::Literal(_)) => {
+                        Some(__i) if __i.is_bare() => {
                             #ident = Some(<#ty>::from_meta(__i)?)
                         },
-                        Some(item) => return Err(item.span().error(
-                            "unexpected named parameter: expected bare literal")),
+                        Some(__i) => return Err(__i.span().error(
+                            "unexpected keyed parameter: expected literal or identifier")),
                         None => return Err(__span.error(
                             format!("missing expected parameter: `{}`", #name))),
                     };
