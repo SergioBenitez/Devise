@@ -9,6 +9,7 @@ use spanned::Spanned;
 use proc_macro::Span;
 
 // Spans of k/v pair, key, then value.
+#[derive(Copy, Clone)]
 pub struct SpanWrapped<T> {
     pub span: Span,
     pub value: T,
