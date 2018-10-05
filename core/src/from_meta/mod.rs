@@ -141,3 +141,13 @@ impl<T> Deref for SpanWrapped<T> {
         &self.value
     }
 }
+
+use std::fmt;
+
+impl<T: fmt::Debug> fmt::Debug for SpanWrapped<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_tuple("SpanWrapped")
+            .field(&self.value)
+            .finish()
+    }
+}
