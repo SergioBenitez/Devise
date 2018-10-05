@@ -131,3 +131,13 @@ impl<T: ::quote::ToTokens> ::quote::ToTokens for SpanWrapped<T> {
         self.value.to_tokens(tokens)
     }
 }
+
+use std::ops::Deref;
+
+impl<T> Deref for SpanWrapped<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        &self.value
+    }
+}
