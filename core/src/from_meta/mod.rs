@@ -12,6 +12,7 @@ use proc_macro::Span;
 #[derive(Copy, Clone)]
 pub struct SpanWrapped<T> {
     pub span: Span,
+    pub full_span: Span,
     pub value: T,
 }
 
@@ -123,7 +124,8 @@ impl<T: FromMeta> FromMeta for Option<T> {
 impl<T: FromMeta> FromMeta for SpanWrapped<T> {
     fn from_meta(meta: MetaItem) -> Result<Self> {
         let span = meta.value_span();
-        T::from_meta(meta).map(|value| SpanWrapped { span, value })
+        let full_span = meta.span();
+        T::from_meta(meta).map(|value| SpanWrapped { full_span, span, value })
     }
 }
 
