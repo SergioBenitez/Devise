@@ -2,6 +2,9 @@
 name = "devise_codegen"
 version = "0.1.0"
 authors = ["Sergio Benitez <sb@sergio.bz>"]
+description = "A library for devising derives and other procedural macros."
+license = "MIT/Apache-2.0"
+repository = "https://github.com/SergioBenitez/Devise"
 
 [lib]
 proc-macro = true
