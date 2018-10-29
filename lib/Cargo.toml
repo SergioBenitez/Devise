@@ -1,8 +1,8 @@
 [package]
-name = "derive_utils"
+name = "devise"
 version = "0.1.0"
 authors = ["Sergio Benitez <sb@sergio.bz>"]
 
 [dependencies]
-derive_utils_core = { version = "0.1", path = "../core/" }
-derive_utils_codegen = { version = "0.1", path = "../codegen" }
+devise_core = { version = "0.1", path = "../core/" }
+devise_codegen = { version = "0.1", path = "../codegen" }

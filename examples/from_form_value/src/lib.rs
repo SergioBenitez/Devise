@@ -1,11 +1,11 @@
 #![feature(proc_macro_diagnostic)]
 
 #[macro_use] extern crate quote;
-extern crate derive_utils;
+extern crate devise;
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
-use derive_utils::*;
+use devise::*;
 
 #[proc_macro_derive(FromFormValue)]
 pub fn derive_from_form_value(input: TokenStream) -> TokenStream {

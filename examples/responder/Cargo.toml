@@ -14,7 +14,7 @@ doc = false
 
 [dependencies]
 quote = "0.6"
-derive_utils = { path = "../../lib" }
+devise = { path = "../../lib" }
 proc-macro2 = "*"
 rocket_http = { git = "https://github.com/SergioBenitez/Rocket" }
 

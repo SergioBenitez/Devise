@@ -3,10 +3,10 @@
 
 extern crate proc_macro;
 #[macro_use] extern crate quote;
-extern crate derive_utils_core;
+extern crate devise_core;
 
 use proc_macro::TokenStream;
-use derive_utils_core::*;
+use devise_core::*;
 
 struct Naked(bool);
 
@@ -33,12 +33,12 @@ impl FromMeta for Naked {
 
 #[proc_macro_derive(FromMeta, attributes(meta))]
 pub fn derive_from_meta(input: TokenStream) -> TokenStream {
-    DeriveGenerator::build_for(input, "::derive_utils::FromMeta")
+    DeriveGenerator::build_for(input, "::devise::FromMeta")
         .data_support(DataSupport::NamedStruct)
         .function(|_, inner| quote! {
             fn from_meta(
-                __meta: ::derive_utils::MetaItem
-            ) -> ::derive_utils::Result<Self> {
+                __meta: ::devise::MetaItem
+            ) -> ::devise::Result<Self> {
                 #inner
             }
         })
@@ -101,20 +101,20 @@ pub fn derive_from_meta(input: TokenStream) -> TokenStream {
                 let name = ident.to_string();
 
                 quote_spanned! { span =>
-                    #ident: #ident.or_else(::derive_utils::FromMeta::default)
+                    #ident: #ident.or_else(::devise::FromMeta::default)
                     .ok_or_else(|| __span.error(
                         format!("missing required attribute parameter: `{}`", #name)))?,
                 }
             });
 
             quote! {
-                use ::derive_utils::Spanned;
+                use ::devise::Spanned;
 
                 // First, check that the attribute is a list: name(list, ..) and
                 // generate __list: iterator over the items in the attribute.
                 let __span = __meta.span();
                 let mut __list = match __meta {
-                    ::derive_utils::MetaItem::List(__l) => __l.iter(),
+                    ::devise::MetaItem::List(__l) => __l.iter(),
                     _ => return Err(__span.error("malformed attribute")
                                     .help("expected syntax: #[attr(key = value, ..)]"))
                 };

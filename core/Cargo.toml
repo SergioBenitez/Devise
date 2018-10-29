@@ -1,5 +1,5 @@
 [package]
-name = "derive_utils_core"
+name = "devise_core"
 version = "0.1.0"
 authors = ["Sergio Benitez <sb@sergio.bz>"]
 

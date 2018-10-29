@@ -1,6 +1,6 @@
 use quote::ToTokens;
 use proc_macro2::TokenStream as TokenStream2;
-use derive_utils::{FromMeta, MetaItem, Result, ext::Split2};
+use devise::{FromMeta, MetaItem, Result, ext::Split2};
 use rocket_http as http;
 
 pub struct ContentType(http::ContentType);

@@ -1,5 +1,5 @@
 [package]
-name = "derive_utils_codegen"
+name = "devise_codegen"
 version = "0.1.0"
 authors = ["Sergio Benitez <sb@sergio.bz>"]
 
@@ -8,4 +8,4 @@ proc-macro = true
 
 [dependencies]
 quote = "0.6"
-derive_utils_core = { version = "0.1", path = "../core/" }
+devise_core = { version = "0.1", path = "../core/" }

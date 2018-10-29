@@ -2,7 +2,7 @@
 #![recursion_limit="128"]
 
 #[macro_use] extern crate quote;
-extern crate derive_utils;
+extern crate devise;
 extern crate proc_macro;
 extern crate rocket_http;
 
@@ -11,7 +11,7 @@ mod http_attrs;
 use quote::ToTokens;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
-use derive_utils::{*, ext::TypeExt};
+use devise::{*, ext::TypeExt};
 
 use http_attrs::{ContentType, Status};
 
