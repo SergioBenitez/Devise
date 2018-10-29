@@ -14,6 +14,6 @@ CORE_DIR="${SCRIPT_DIR}/../core"
 for dir in "${CORE_DIR}" "${CODEGEN_DIR}" "${LIB_DIR}"; do
   pushd ${dir}
   echo ":::: Publishing '${dir}'..."
-  cargo publish --dry-run
+  cargo publish
   popd
 done
