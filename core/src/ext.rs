@@ -97,10 +97,14 @@ impl TypeExt for Type {
     }
 }
 
+fn make_wild(lifetime: &mut Lifetime) {
+    lifetime.ident = Ident::new("_", lifetime.ident.span());
+}
+
 fn strip(ty: &mut Type) {
     match *ty {
         Type::Reference(ref mut inner) => {
-            inner.lifetime = None;
+            inner.lifetime.as_mut().map(make_wild);
             strip(&mut inner.elem);
         }
         Type::Slice(ref mut inner) => strip(&mut inner.elem),
@@ -109,7 +113,7 @@ fn strip(ty: &mut Type) {
         Type::Paren(ref mut inner) => strip(&mut inner.elem),
         Type::Group(ref mut inner) => strip(&mut inner.elem),
         Type::BareFn(ref mut inner) => {
-            inner.lifetimes = None;
+            inner.lifetimes.as_mut().map(strip_bound_lifetimes);
             if let ReturnType::Type(_, ref mut ty) = inner.output {
                 strip(ty);
             }
@@ -132,6 +136,10 @@ fn strip(ty: &mut Type) {
     }
 }
 
+fn strip_bound_lifetimes(bound: &mut BoundLifetimes) {
+    bound.lifetimes.iter_mut().for_each(|d| make_wild(&mut d.lifetime));
+}
+
 fn strip_path(path: &mut Path) {
     for segment in path.segments.iter_mut() {
         use syn::GenericArgument::*;
@@ -141,7 +149,7 @@ fn strip_path(path: &mut Path) {
                 let args = inner.args.clone();
                 inner.args = args.into_pairs().filter_map(|mut pair| {
                     match pair.value_mut() {
-                        Lifetime(_) => return None,
+                        Lifetime(ref mut l) => make_wild(l),
                         Type(ref mut ty) => strip(ty),
                         Binding(ref mut inner) => strip(&mut inner.ty),
                         Constraint(ref mut inner) => strip_bounds(&mut inner.bounds),
@@ -166,9 +174,9 @@ fn strip_bounds(bounds: &mut Punctuated<TypeParamBound, token::Add>) {
     let old_bounds = bounds.clone();
     *bounds = old_bounds.into_pairs().filter_map(|mut pair| {
         match pair.value_mut() {
-            TypeParamBound::Lifetime(_) => return None,
+            TypeParamBound::Lifetime(ref mut l) => make_wild(l),
             TypeParamBound::Trait(ref mut inner) => {
-                inner.lifetimes = None;
+                inner.lifetimes.as_mut().map(strip_bound_lifetimes);
                 strip_path(&mut inner.path);
             }
         }

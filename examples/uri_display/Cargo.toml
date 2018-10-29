@@ -10,6 +10,7 @@ proc-macro = true
 [[bin]]
 name = "main"
 path = "src/main.rs"
+doc = false
 
 [dependencies]
 quote = "0.6"

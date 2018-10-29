@@ -2,8 +2,7 @@
 name = "derive_utils"
 version = "0.1.0"
 authors = ["Sergio Benitez <sb@sergio.bz>"]
-publish = false
 
 [dependencies]
-derive_utils_core = { path = "../core" }
-derive_utils_codegen = { path = "../codegen" }
+derive_utils_core = { version = "0.1", path = "../core/" }
+derive_utils_codegen = { version = "0.1", path = "../codegen" }
