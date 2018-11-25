@@ -12,18 +12,12 @@ use derived::{Derived, Variant, Struct, Enum};
 pub type Result<T> = ::std::result::Result<T, Diagnostic>;
 pub type MapResult = Result<TokenStream2>;
 
-pub type EnumValidatorFn = fn(&DeriveGenerator, Enum) -> Result<()>;
-pub type StructValidatorFn = fn(&DeriveGenerator, Struct) -> Result<()>;
-pub type GenericsValidatorFn = fn(&DeriveGenerator, &::syn::Generics) -> Result<()>;
-pub type FieldsValidatorFn = fn(&DeriveGenerator, Fields) -> Result<()>;
-
-pub type FunctionFn = fn(&DeriveGenerator, TokenStream2) -> TokenStream2;
-pub type TypeGenericMapFn = fn(&DeriveGenerator, &syn::Ident, &syn::TypeParam) -> TokenStream2;
-
 macro_rules! validator {
     ($fn_name:ident: $validate_fn_type:ty, $field:ident) => {
-        pub fn $fn_name(&mut self, f: $validate_fn_type) -> &mut Self {
-            self.$field = f;
+        pub fn $fn_name<F: 'static>(&mut self, f: F) -> &mut Self
+            where F: Fn(&DeriveGenerator, $validate_fn_type) -> Result<()>
+        {
+            self.$field = Box::new(f);
             self
         }
     }
@@ -36,8 +30,8 @@ macro_rules! mappers {
         }
 
         $(
-            pub fn $map_f<F>(&mut self, f: F) -> &mut Self
-                where F: Fn(&DeriveGenerator, $type) -> TokenStream2 + 'static
+            pub fn $map_f<F: 'static>(&mut self, f: F) -> &mut Self
+                where F: Fn(&DeriveGenerator, $type) -> TokenStream2
             {
                 if !self.$vec.is_empty() {
                     let last = self.$vec.len() - 1;
@@ -47,8 +41,8 @@ macro_rules! mappers {
                 self
             }
 
-            pub fn $try_f<F>(&mut self, f: F) -> &mut Self
-                where F: Fn(&DeriveGenerator, $type) -> MapResult + 'static
+            pub fn $try_f<F: 'static>(&mut self, f: F) -> &mut Self
+                where F: Fn(&DeriveGenerator, $type) -> MapResult
             {
                 if !self.$vec.is_empty() {
                     let last = self.$vec.len() - 1;
@@ -74,13 +68,13 @@ pub struct DeriveGenerator {
     pub trait_path: syn::Path,
     crate generic_support: GenericSupport,
     crate data_support: DataSupport,
-    crate enum_validator: EnumValidatorFn,
-    crate struct_validator: StructValidatorFn,
-    crate generics_validator: GenericsValidatorFn,
-    crate fields_validator: FieldsValidatorFn,
-    crate type_generic_mapper: Option<TypeGenericMapFn>,
+    crate enum_validator: Box<Fn(&DeriveGenerator, Enum) -> Result<()>>,
+    crate struct_validator: Box<Fn(&DeriveGenerator, Struct) -> Result<()>>,
+    crate generics_validator: Box<Fn(&DeriveGenerator, &::syn::Generics) -> Result<()>>,
+    crate fields_validator: Box<Fn(&DeriveGenerator, Fields) -> Result<()>>,
+    crate type_generic_mapper: Option<Box<Fn(&DeriveGenerator, &syn::Ident, &syn::TypeParam) -> TokenStream2>>,
     crate generic_replacements: Vec<(usize, usize)>,
-    crate functions: Vec<FunctionFn>,
+    crate functions: Vec<Box<Fn(&DeriveGenerator, TokenStream2) -> TokenStream2>>,
     crate enum_mappers: Vec<Box<Fn(&DeriveGenerator, Enum) -> MapResult>>,
     crate struct_mappers: Vec<Box<Fn(&DeriveGenerator, Struct) -> MapResult>>,
     crate variant_mappers: Vec<Box<Fn(&DeriveGenerator, Variant) -> MapResult>>,
@@ -148,10 +142,10 @@ impl DeriveGenerator {
             data_support: DataSupport::None,
             type_generic_mapper: None,
             generic_replacements: vec![],
-            enum_validator: |_, _| Ok(()),
-            struct_validator: |_, _| Ok(()),
-            generics_validator: |_, _| Ok(()),
-            fields_validator: |_, _| Ok(()),
+            enum_validator: Box::new(|_, _| Ok(())),
+            struct_validator: Box::new(|_, _| Ok(())),
+            generics_validator: Box::new(|_, _| Ok(())),
+            fields_validator: Box::new(|_, _| Ok(())),
             functions: vec![],
             enum_mappers: vec![],
             struct_mappers: vec![],
@@ -171,8 +165,10 @@ impl DeriveGenerator {
         self
     }
 
-    pub fn map_type_generic(&mut self, f: TypeGenericMapFn) -> &mut Self {
-        self.type_generic_mapper = Some(f);
+    pub fn map_type_generic<F: 'static>(&mut self, f: F) -> &mut Self
+        where F: Fn(&DeriveGenerator, &syn::Ident, &syn::TypeParam) -> TokenStream2
+    {
+        self.type_generic_mapper = Some(Box::new(f));
         self
     }
 
@@ -181,13 +177,15 @@ impl DeriveGenerator {
         self
     }
 
-    validator!(validate_enum: EnumValidatorFn, enum_validator);
-    validator!(validate_struct: StructValidatorFn, struct_validator);
-    validator!(validate_generics: GenericsValidatorFn, generics_validator);
-    validator!(validate_fields: FieldsValidatorFn, fields_validator);
+    validator!(validate_enum: Enum, enum_validator);
+    validator!(validate_struct: Struct, struct_validator);
+    validator!(validate_generics: &syn::Generics, generics_validator);
+    validator!(validate_fields: Fields, fields_validator);
 
-    pub fn function(&mut self, f: FunctionFn) -> &mut Self {
-        self.functions.push(f);
+    pub fn function<F: 'static>(&mut self, f: F) -> &mut Self 
+        where F: Fn(&DeriveGenerator, TokenStream2) -> TokenStream2
+    {
+        self.functions.push(Box::new(f));
         self.push_default_mappers();
         self
     }
@@ -267,7 +265,7 @@ impl DeriveGenerator {
         // Step 2a: Generate the code for each function.
         let mut function_code = vec![];
         for i in 0..self.functions.len() {
-            let function = self.functions[i];
+            let function = &self.functions[i];
             let inner = match self.input.data {
                 Data::Struct(ref data) => {
                     let derived = Derived::from(&self.input, data);
@@ -287,7 +285,7 @@ impl DeriveGenerator {
         let mut generics = self.input.generics.clone();
 
         // Step 2c: Add additional where bounds if the generator asks for it.
-        if let Some(type_mapper) = self.type_generic_mapper {
+        if let Some(ref type_mapper) = self.type_generic_mapper {
             for ty in self.input.generics.type_params() {
                 let new_ty = type_mapper(self, &ty.ident, ty);
                 let clause = syn::parse2(new_ty).expect("invalid type generic mapping");
