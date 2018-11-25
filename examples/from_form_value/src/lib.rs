@@ -9,8 +9,7 @@ use devise::*;
 
 #[proc_macro_derive(FromFormValue)]
 pub fn derive_from_form_value(input: TokenStream) -> TokenStream {
-    DeriveGenerator::build_for(input, "::rocket::request::FromFormValue<'__v>")
-        .generic_support(GenericSupport::None)
+    DeriveGenerator::build_for(input, quote!(impl<'__v> ::rocket::request::FromFormValue<'__v>))
         .data_support(DataSupport::Enum)
         .validate_enum(|generator, data| {
             // This derive only works for variants that are nullary.

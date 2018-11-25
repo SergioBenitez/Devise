@@ -1,5 +1,5 @@
 [package]
-name = "uri_display"
+name = "generics"
 version = "0.2.0-dev"
 authors = ["Sergio Benitez <sb@sergio.bz>"]
 publish = false
@@ -15,7 +15,3 @@ doc = false
 [dependencies]
 quote = "0.6"
 devise = { path = "../../lib" }
-
-# used by main.rs
-rocket = { git = "https://github.com/SergioBenitez/Rocket" }
-smallvec = "*"

@@ -22,4 +22,11 @@ pub struct Bar<'r> {
     _yet_another: String,
 }
 
+#[derive(Responder)]
+pub enum Baz {
+    First(String),
+    #[response(status = 500)]
+    Second(Vec<u8>),
+}
+
 pub fn main() { }

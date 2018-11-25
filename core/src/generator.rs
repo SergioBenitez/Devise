@@ -3,7 +3,7 @@ use proc_macro::{TokenStream, Diagnostic};
 use proc_macro2::TokenStream as TokenStream2;
 
 use spanned::Spanned;
-use ext::{PathExt, GenericExt};
+use ext::GenericExt;
 
 use field::{Field, Fields};
 use support::{GenericSupport, DataSupport};
@@ -67,8 +67,10 @@ macro_rules! mappers {
     )
 }
 
+// FIXME: Take a `Box<Fn>` everywhere so we can capture args!
 pub struct DeriveGenerator {
     pub input: syn::DeriveInput,
+    pub trait_impl: syn::ItemImpl,
     pub trait_path: syn::Path,
     crate generic_support: GenericSupport,
     crate data_support: DataSupport,
@@ -134,13 +136,14 @@ pub fn default_fields_mapper(g: &DeriveGenerator, fields: Fields) -> MapResult {
 }
 
 impl DeriveGenerator {
-    pub fn build_for(input: TokenStream, trait_path: &str) -> DeriveGenerator {
-        let trait_path_ts = trait_path.parse().expect("invalid tokens for path");
-        let trait_path = syn::parse(trait_path_ts).expect("invalid trait path");
+    pub fn build_for(input: TokenStream, trait_impl: TokenStream2) -> DeriveGenerator {
+        let trait_impl: syn::ItemImpl = syn::parse2(quote!(#trait_impl for Foo {}))
+            .expect("invalid impl");
+        let trait_path = trait_impl.trait_.clone().expect("impl does not have trait").1;
         let input = syn::parse(input).expect("invalid derive input");
 
         DeriveGenerator {
-            input, trait_path,
+            input, trait_impl, trait_path,
             generic_support: GenericSupport::None,
             data_support: DataSupport::None,
             type_generic_mapper: None,
@@ -283,58 +286,49 @@ impl DeriveGenerator {
         // Step 2b: Create a couple of generics to mutate with user's input.
         let mut generics = self.input.generics.clone();
 
-        // Step 2c: Add additional where bounds if the user asked for it.
+        // Step 2c: Add additional where bounds if the generator asks for it.
         if let Some(type_mapper) = self.type_generic_mapper {
             for ty in self.input.generics.type_params() {
                 let new_ty = type_mapper(self, &ty.ident, ty);
-                let clause = syn::parse2(new_ty).expect("yo");
+                let clause = syn::parse2(new_ty).expect("invalid type generic mapping");
                 generics.make_where_clause().predicates.push(clause);
             }
         }
 
-        // Step 2d: Add any generics the user supplied.
+        // Step 2d: Add any generics in the trait.
         let mut generics_for_impl_generics = generics.clone();
-        if let Some(trait_generics) = self.trait_path.generics() {
-            for (i, generic) in trait_generics.iter().enumerate() {
-                use ::syn::GenericArgument::Lifetime;
+        for (i, trait_param) in self.trait_impl.generics.params.iter().enumerate() {
+            // Step 2d.0: Perform a generic replacement if requested. Here,
+            // we determine if a generic (i) in the trait is going to replace a
+            // generic in the user's type (the `jth` of the right kind).
+            let replacement = self.generic_replacements.iter()
+                .filter(|r| r.0 == i)
+                .next();
 
-                let param: GenericParam = if let Lifetime(lifetime) = generic {
-                    LifetimeDef::new(lifetime.clone()).into()
-                } else {
-                    unimplemented!("can only handle lifetime generics in traits")
+            if let Some((_, j)) = replacement {
+                use syn::{punctuated::Punctuated, token::Comma};
+
+                // Step 2d.1: Actually perform the replacement.
+                let replace_in = |ps: &mut Punctuated<GenericParam, Comma>| -> bool {
+                    ps.iter_mut()
+                        .filter(|param| param.kind() == trait_param.kind())
+                        .nth(*j)
+                        .map(|impl_param| *impl_param = trait_param.clone())
+                        .is_some()
                 };
 
-                // Step 2d.0: Perform a generic replacement if requested. Here,
-                // we determine if this generic in the trait is going to replace
-                // a generic in the user's type.
-                let replacement = self.generic_replacements.iter()
-                    .filter(|r| r.0 == i)
-                    .next();
-
-                if let Some((_, j)) = replacement {
-                    use syn::{punctuated::Punctuated, token::Comma};
-
-                    // Step 2d.1: Actually perform the replacement.
-                    let replace_in = |ps: &mut Punctuated<GenericParam, Comma>| -> bool {
-                        ps.iter_mut()
-                            .filter(|param| param.kind() == generic.kind())
-                            .nth(*j)
-                            .map(|impl_param| *impl_param = param.clone())
-                            .is_some()
-                    };
-
-                    // Step 2d.2: If it fails, insert a new impl generic.
-                    // NOTE: It's critical that `generics` is attempted first!
-                    // Otherwise, we might replace generics that don't exist in
-                    // the user's type.
-                    if !replace_in(&mut generics.params)
-                         || !replace_in(&mut generics_for_impl_generics.params) {
-                        generics_for_impl_generics.params.insert(0, param.clone());
-                    }
-                } else {
-                    // Step 2d.2: Otherwise, insert a new impl generic.
-                    generics_for_impl_generics.params.insert(0, param);
+                // Step 2d.2: If it fails, insert a new impl generic.
+                // NOTE: It's critical that `generics` is attempted first!
+                // Otherwise, we might replace generics that don't exist in the
+                // user's type.
+                if !replace_in(&mut generics.params)
+                    || !replace_in(&mut generics_for_impl_generics.params)
+                {
+                    generics_for_impl_generics.params.insert(0, trait_param.clone());
                 }
+            } else {
+                // Step 2d.2: Otherwise, insert a new impl<..> generic.
+                generics_for_impl_generics.params.insert(0, trait_param.clone());
             }
         }
 

@@ -8,4 +8,9 @@ enum Foo {
     Other
 }
 
+// #[derive(FromFormValue)]
+// enum Bar<T> {
+//     OptionA(T),
+// }
+
 pub fn main() { }

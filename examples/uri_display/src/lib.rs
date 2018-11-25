@@ -43,7 +43,7 @@ fn validate_enum(gen: &DeriveGenerator, data: Enum) -> Result<()> {
 #[proc_macro_derive(UriDisplay)]
 pub fn derive_uri_display(input: TokenStream) -> TokenStream {
     // DeriveGenerator::build_for(input, "::rocket::uri::UriDisplay")
-    DeriveGenerator::build_for(input, "UriDisplay")
+    DeriveGenerator::build_for(input, quote!(impl UriDisplay))
         .generic_support(GenericSupport::Type | GenericSupport::Lifetime)
         .data_support(DataSupport::Struct | DataSupport::Enum)
         .validate_enum(validate_enum)

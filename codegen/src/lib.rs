@@ -33,7 +33,7 @@ impl FromMeta for Naked {
 
 #[proc_macro_derive(FromMeta, attributes(meta))]
 pub fn derive_from_meta(input: TokenStream) -> TokenStream {
-    DeriveGenerator::build_for(input, "::devise::FromMeta")
+    DeriveGenerator::build_for(input, quote!(impl ::devise::FromMeta))
         .data_support(DataSupport::NamedStruct)
         .function(|_, inner| quote! {
             fn from_meta(
