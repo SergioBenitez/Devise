@@ -1,6 +1,6 @@
 [package]
 name = "generics"
-version = "0.2.0-dev"
+version = "0.2.0"
 authors = ["Sergio Benitez <sb@sergio.bz>"]
 publish = false
 
