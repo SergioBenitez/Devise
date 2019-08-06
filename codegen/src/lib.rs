@@ -1,11 +1,13 @@
 #![feature(proc_macro_diagnostic, proc_macro_span)]
 #![recursion_limit="256"]
 
+extern crate devise_core;
 extern crate proc_macro;
 #[macro_use] extern crate quote;
-extern crate devise_core;
 
 use proc_macro::TokenStream;
+use proc_macro::TokenTree::Ident;
+
 use devise_core::*;
 
 struct Naked(bool);
@@ -18,8 +20,8 @@ impl FromMeta for Naked {
             }
 
             let item = list.iter().next().unwrap();
-            if let MetaItem::Ident(ident) = item {
-                if ident == "naked" {
+            if let MetaItem::Path(path) = item {
+                if path.is_ident("naked") {
                     return Ok(Naked(true));
                 }
             }

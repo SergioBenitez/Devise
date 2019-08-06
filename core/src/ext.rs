@@ -52,7 +52,7 @@ impl PathExt for Path {
 
     fn generics(&self) -> Option<&Punctuated<GenericArgument, Comma>> {
         self.segments.last().and_then(|last| {
-            match last.value().arguments {
+            match last.arguments {
                 PathArguments::AngleBracketed(ref args) => Some(&args.args),
                 _ => None
             }
@@ -133,6 +133,7 @@ fn strip(ty: &mut Type) {
         Type::ImplTrait(ref mut inner) => strip_bounds(&mut inner.bounds),
         Type::TraitObject(ref mut inner) => strip_bounds(&mut inner.bounds),
         Type::Infer(_) | Type::Macro(_) | Type::Verbatim(_) | Type::Never(_) => {  }
+        _ => {}
     }
 }
 

@@ -182,7 +182,7 @@ impl DeriveGenerator {
     validator!(validate_generics: &syn::Generics, generics_validator);
     validator!(validate_fields: Fields, fields_validator);
 
-    pub fn function<F: 'static>(&mut self, f: F) -> &mut Self 
+    pub fn function<F: 'static>(&mut self, f: F) -> &mut Self
         where F: Fn(&DeriveGenerator, TokenStream2) -> TokenStream2
     {
         self.functions.push(Box::new(f));
@@ -361,7 +361,7 @@ impl DeriveGenerator {
                     use proc_macro::Span;
                     use proc_macro::Level::*;
 
-                    let id = &last.value().ident;
+                    let id = &last.ident;
                     let msg = match diag.level() {
                         Error => format!("error occurred while deriving `{}`", id),
                         Warning => format!("warning issued by `{}` derive", id),

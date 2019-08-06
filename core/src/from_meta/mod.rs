@@ -20,14 +20,14 @@ pub trait FromMeta: Sized {
     fn from_meta(meta: MetaItem) -> Result<Self>;
 
     fn from_attr(name: &str, attr: &syn::Attribute) -> Result<Self> {
-        let meta = attr.interpret_meta().ok_or_else(|| {
+        let meta = attr.parse_meta().map_err(|_| {
             attr.span()
                 .error("malformed attribute")
                 .help(format!("expected syntax: #[{}(key = value, ..)]", name))
         })?;
 
         if let syn::Meta::List(list) = meta {
-            let list = MetaItemList { ident: &list.ident, iter: &list.nested };
+            let list = MetaItemList { path: &list.path, iter: &list.nested };
             Self::from_meta(MetaItem::List(list))
         } else {
             Err(meta.span()
@@ -62,11 +62,11 @@ pub trait FromMeta: Sized {
 impl FromMeta for isize {
     fn from_meta(meta: MetaItem) -> Result<Self> {
         if let Int(i) = meta.lit()? {
-            if i.value() <= isize::max_value() as u64 {
-                return Ok(i.value() as isize);
+            match i.base10_digits().parse::<isize>() {
+                Ok(value) => return Ok(value),
+                Err(parse_int_error) =>
+                    return Err(meta.value_span().error("value is out of range for `isize`")),
             }
-
-            return Err(meta.value_span().error("value is out of range for `isize`"));
         }
 
         Err(meta.value_span().error("invalid value: expected integer literal"))
@@ -76,11 +76,11 @@ impl FromMeta for isize {
 impl FromMeta for usize {
     fn from_meta(meta: MetaItem) -> Result<Self> {
         if let Int(i) = meta.lit()? {
-            if i.value() <= usize::max_value() as u64 {
-                return Ok(i.value() as usize);
+            match i.base10_digits().parse::<usize>() {
+                Ok(value) => return Ok(value),
+                Err(parse_int_error) =>
+                    return Err(meta.value_span().error("value is out of range for `usize`")),
             }
-
-            return Err(meta.value_span().error("value is out of range for `usize`"));
         }
 
         Err(meta.value_span().error("invalid value: expected unsigned integer literal"))
@@ -99,7 +99,7 @@ impl FromMeta for String {
 
 impl FromMeta for bool {
     fn from_meta(meta: MetaItem) -> Result<Self> {
-        if let MetaItem::Ident(_) = meta {
+        if let MetaItem::Path(_) = meta {
             return Ok(true);
         }
 
