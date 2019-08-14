@@ -46,7 +46,7 @@ impl<'a> From<&'a syn::NestedMeta> for MetaItem<'a> {
     fn from(nested: &syn::NestedMeta) -> MetaItem {
         match nested {
             syn::NestedMeta::Meta(meta) => MetaItem::from(meta),
-            syn::NestedMeta::Literal(lit) => MetaItem::Literal(lit),
+            syn::NestedMeta::Lit(lit) => MetaItem::Literal(lit),
         }
     }
 }

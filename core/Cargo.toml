@@ -7,7 +7,7 @@ license = "MIT/Apache-2.0"
 repository = "https://github.com/SergioBenitez/Devise"
 
 [dependencies]
-quote-next = "1.0.0-rc1"
-proc-macro2-next = { version = "1.0.0-rc1", features = ["nightly"] }
-syn-next = { version = "1.0.0-rc2", features = ["full", "extra-traits"] }
+quote = "1.0"
+proc-macro2 = { version = "1.0", features = ["nightly"] }
+syn = { version = "1.0", features = ["full", "extra-traits"] }
 bitflags = "1.0"

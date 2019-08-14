@@ -10,5 +10,5 @@ repository = "https://github.com/SergioBenitez/Devise"
 proc-macro = true
 
 [dependencies]
-quote-next = "1.0.0-rc1"
+quote = "1.0"
 devise_core = { version = "0.2.0", path = "../core/" }
