@@ -62,7 +62,7 @@ pub trait FromMeta: Sized {
 impl FromMeta for isize {
     fn from_meta(meta: MetaItem) -> Result<Self> {
         if let Int(i) = meta.lit()? {
-            match i.base10_digits().parse::<isize>() {
+            match i.base10_parse::<isize>() {
                 Ok(value) => return Ok(value),
                 Err(parse_int_error) =>
                     return Err(meta.value_span().error("value is out of range for `isize`")),
@@ -76,7 +76,7 @@ impl FromMeta for isize {
 impl FromMeta for usize {
     fn from_meta(meta: MetaItem) -> Result<Self> {
         if let Int(i) = meta.lit()? {
-            match i.base10_digits().parse::<usize>() {
+            match i.base10_parse::<usize>() {
                 Ok(value) => return Ok(value),
                 Err(parse_int_error) =>
                     return Err(meta.value_span().error("value is out of range for `usize`")),
