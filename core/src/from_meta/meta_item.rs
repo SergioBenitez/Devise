@@ -3,6 +3,7 @@ use syn::{self, punctuated::Punctuated};
 use generator::Result;
 use spanned::Spanned;
 use proc_macro::Span;
+use quote::ToTokens;
 
 #[derive(Debug, Copy, Clone)]
 pub enum MetaItem<'a> {
@@ -57,16 +58,7 @@ impl<'a> MetaItem<'a> {
 
         match self {
             Path(path) | KeyValue(path, _) | List(MetaItemList { path, .. }) => {
-                let mut name = String::new();
-
-                if let Some(_colon2) = path.leading_colon {
-                    name.push_str("::");
-                }
-                for segment in &path.segments {
-                    name.push_str(&segment.ident.to_string());
-                }
-
-                Some(name)
+                Some(path.to_token_stream().to_string())
             }
             _ => None
         }
