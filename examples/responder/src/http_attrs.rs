@@ -10,10 +10,10 @@ pub struct Status(http::Status);
 struct MediaType(http::MediaType);
 
 impl FromMeta for Status {
-    fn from_meta(meta: MetaItem) -> Result<Self> {
+    fn from_meta(meta: MetaItem<'_>) -> Result<Self> {
         let num = usize::from_meta(meta)?;
         if num < 100 || num >= 600 {
-            return Err(meta.value_span().error("status must be in range [100, 600)"));
+            return Err(meta.value_span().error("status must be in range [100, 599]"));
         }
 
         Ok(Status(http::Status::raw(num as u16)))
@@ -23,15 +23,15 @@ impl FromMeta for Status {
 impl ToTokens for Status {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
         let (code, reason) = (self.0.code, self.0.reason);
-        tokens.extend(quote!(rocket::http::Status::new(#code, #reason)));
+        tokens.extend(quote!(rocket::http::Status { code: #code, reason: #reason }));
     }
 }
 
 impl FromMeta for ContentType {
-    fn from_meta(meta: MetaItem) -> Result<Self> {
+    fn from_meta(meta: MetaItem<'_>) -> Result<Self> {
         http::ContentType::parse_flexible(&String::from_meta(meta)?)
             .map(ContentType)
-            .ok_or(meta.value_span().error("invalid or unknown content-type"))
+            .ok_or(meta.value_span().error("invalid or unknown content type"))
     }
 }
 
@@ -49,12 +49,13 @@ impl ToTokens for MediaType {
         let (top, sub) = (self.0.top().as_str(), self.0.sub().as_str());
         let (keys, values) = self.0.params().split2();
 
-        let (http, cow) = (quote!(::rocket::http), quote!(::std::borrow::Cow));
+        let cow = quote!(::std::borrow::Cow);
+        let (pub_http, http) = (quote!(::rocket::http), quote!(::rocket::http::private));
         let (http_, http__) = (repeat(&http), repeat(&http));
         let (cow_, cow__) = (repeat(&cow), repeat(&cow));
 
         // TODO: Produce less code when possible (for known media types).
-        tokens.extend(quote!(#http::MediaType {
+        tokens.extend(quote!(#pub_http::MediaType {
             source: #http::Source::None,
             top: #http::Indexed::Concrete(#cow::Borrowed(#top)),
             sub: #http::Indexed::Concrete(#cow::Borrowed(#sub)),
