@@ -4,6 +4,7 @@ pub trait PathExt {
     fn is(&self, global: bool, segments: &[&str]) -> bool;
     fn is_local(&self, segments: &[&str]) -> bool;
     fn is_global(&self, segments: &[&str]) -> bool;
+    fn last_ident(&self) -> Option<&Ident>;
     fn generics(&self) -> Option<&Punctuated<GenericArgument, Comma>>;
 }
 
@@ -48,6 +49,10 @@ impl PathExt for Path {
 
     fn is_global(&self, segments: &[&str]) -> bool {
         self.is(true, segments)
+    }
+
+    fn last_ident(&self) -> Option<&Ident> {
+        self.segments.last().map(|p| &p.ident)
     }
 
     fn generics(&self) -> Option<&Punctuated<GenericArgument, Comma>> {
