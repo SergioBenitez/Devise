@@ -1,6 +1,6 @@
 [package]
 name = "responder"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Sergio Benitez <sb@sergio.bz>"]
 publish = false
 
@@ -13,9 +13,9 @@ path = "src/main.rs"
 doc = false
 
 [dependencies]
-quote = "0.6"
+quote = "1.0"
 devise = { path = "../../lib" }
-proc-macro2 = "*"
+proc-macro2 = "1.0"
 rocket_http = { git = "https://github.com/SergioBenitez/Rocket" }
 
 # used by main.rs

@@ -361,7 +361,7 @@ impl DeriveGenerator {
                     use proc_macro::Span;
                     use proc_macro::Level::*;
 
-                    let id = &last.value().ident;
+                    let id = &last.ident;
                     let msg = match diag.level() {
                         Error => format!("error occurred while deriving `{}`", id),
                         Warning => format!("warning issued by `{}` derive", id),

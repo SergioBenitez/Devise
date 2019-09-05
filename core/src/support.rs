@@ -1,3 +1,5 @@
+#![allow(non_upper_case_globals)]
+
 bitflags! {
     pub struct GenericSupport: u32 {
         const None     = 0b000;

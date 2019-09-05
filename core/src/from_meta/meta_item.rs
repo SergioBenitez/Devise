@@ -6,15 +6,15 @@ use proc_macro::Span;
 
 #[derive(Debug, Copy, Clone)]
 pub enum MetaItem<'a> {
-    Ident(&'a syn::Ident),
+    Path(&'a syn::Path),
     Literal(&'a syn::Lit),
-    KeyValue(&'a syn::Ident, &'a syn::Lit),
+    KeyValue(&'a syn::Path, &'a syn::Lit),
     List(MetaItemList<'a>)
 }
 
 #[derive(Debug, Copy, Clone)]
 pub struct MetaItemList<'a> {
-    pub ident: &'a syn::Ident,
+    pub path: &'a syn::Path,
     pub iter: &'a Punctuated<syn::NestedMeta, syn::token::Comma>
 }
 
@@ -33,10 +33,10 @@ impl<'a> Spanned for MetaItemList<'a> {
 impl<'a> From<&'a syn::Meta> for MetaItem<'a> {
     fn from(meta: &syn::Meta) -> MetaItem {
         match meta {
-            syn::Meta::Word(i) => MetaItem::Ident(i),
-            syn::Meta::NameValue(nv) => MetaItem::KeyValue(&nv.ident, &nv.lit),
+            syn::Meta::Path(p) => MetaItem::Path(p),
+            syn::Meta::NameValue(nv) => MetaItem::KeyValue(&nv.path, &nv.lit),
             syn::Meta::List(list) => {
-                MetaItem::List(MetaItemList { ident: &list.ident, iter: &list.nested })
+                MetaItem::List(MetaItemList { path: &list.path, iter: &list.nested })
             }
         }
     }
@@ -46,26 +46,31 @@ impl<'a> From<&'a syn::NestedMeta> for MetaItem<'a> {
     fn from(nested: &syn::NestedMeta) -> MetaItem {
         match nested {
             syn::NestedMeta::Meta(meta) => MetaItem::from(meta),
-            syn::NestedMeta::Literal(lit) => MetaItem::Literal(lit),
+            syn::NestedMeta::Lit(lit) => MetaItem::Literal(lit),
         }
     }
 }
 
 impl<'a> MetaItem<'a> {
-    pub fn name(&self) -> Option<&syn::Ident> {
+    pub fn path(&self) -> Option<&syn::Path> {
         use MetaItem::*;
 
         match self {
-            Ident(i) | KeyValue(i, _) | List(MetaItemList { ident: i, .. }) => {
-                Some(i)
+            Path(p) | KeyValue(p, _) | List(MetaItemList { path: p, .. }) => {
+                Some(p)
             }
             _ => None
         }
     }
 
+    pub fn name(&self) -> Option<&syn::Ident> {
+        let path = self.path()?;
+        path.segments.last().map(|l| &l.ident)
+    }
+
     pub fn description(&self) -> &'static str {
         match self {
-            MetaItem::Ident(..) => "identifier",
+            MetaItem::Path(..) => "path",
             MetaItem::Literal(syn::Lit::Str(..)) => "string literal",
             MetaItem::Literal(syn::Lit::ByteStr(..)) => "byte string literal",
             MetaItem::Literal(syn::Lit::Byte(..)) => "byte literal",
@@ -81,7 +86,7 @@ impl<'a> MetaItem<'a> {
 
     pub fn is_bare(&self) -> bool {
         match self {
-            MetaItem::Ident(..) | MetaItem::Literal(..) => true,
+            MetaItem::Path(..) | MetaItem::Literal(..) => true,
             MetaItem::KeyValue(..) | MetaItem::List(..) => false,
         }
     }
@@ -104,7 +109,7 @@ impl<'a> MetaItem<'a> {
 impl<'a> Spanned for MetaItem<'a> {
     fn span(&self) -> Span {
         match self {
-            MetaItem::Ident(i) => i.span(),
+            MetaItem::Path(p) => p.span(),
             MetaItem::Literal(l) => l.span(),
             MetaItem::KeyValue(i, l) => {
                 i.span().join(l.span()).unwrap_or(Span::call_site())

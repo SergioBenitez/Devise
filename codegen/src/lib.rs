@@ -18,8 +18,8 @@ impl FromMeta for Naked {
             }
 
             let item = list.iter().next().unwrap();
-            if let MetaItem::Ident(ident) = item {
-                if ident == "naked" {
+            if let MetaItem::Path(path) = item {
+                if path.is_ident("naked") {
                     return Ok(Naked(true));
                 }
             }

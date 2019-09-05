@@ -49,12 +49,13 @@ impl ToTokens for MediaType {
         let (top, sub) = (self.0.top().as_str(), self.0.sub().as_str());
         let (keys, values) = self.0.params().split2();
 
-        let (http, cow) = (quote!(::rocket::http), quote!(::std::borrow::Cow));
+        let cow = quote!(::std::borrow::Cow);
+        let (pub_http, http) = (quote!(::rocket::http), quote!(::rocket::http::private));
         let (http_, http__) = (repeat(&http), repeat(&http));
         let (cow_, cow__) = (repeat(&cow), repeat(&cow));
 
         // TODO: Produce less code when possible (for known media types).
-        tokens.extend(quote!(#http::MediaType {
+        tokens.extend(quote!(#pub_http::MediaType {
             source: #http::Source::None,
             top: #http::Indexed::Concrete(#cow::Borrowed(#top)),
             sub: #http::Indexed::Concrete(#cow::Borrowed(#sub)),
