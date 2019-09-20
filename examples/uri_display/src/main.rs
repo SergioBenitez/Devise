@@ -106,7 +106,7 @@ impl<'a, T: UriDisplay> UriDisplay for &'a T {
         UriDisplay::fmt(*self, f)
     }
 }
-impl<'a> fmt::Display for &'a UriDisplay {
+impl<'a> fmt::Display for &'a dyn UriDisplay {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = Formatter {
             prefixes: SmallVec::new(),
