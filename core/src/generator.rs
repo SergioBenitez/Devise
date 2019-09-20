@@ -24,9 +24,9 @@ macro_rules! validator {
 }
 
 macro_rules! mappers {
-    ($(($map_f:ident, $try_f:ident, $get_f:ident): $type:ty, $vec:ident),*) => (
+    ($(($map_f:ident, $try_f:ident, $get_f:ident, $default_f:ident): $type:ty, $vec:ident),*) => (
         crate fn push_default_mappers(&mut self) {
-            $(self.$vec.push(Box::new(concat_idents!(default_, $get_f)));)*
+            $(self.$vec.push(Box::new($default_f));)*
         }
 
         $(
@@ -191,11 +191,20 @@ impl DeriveGenerator {
     }
 
     mappers! {
-        (map_struct, try_map_struct, struct_mapper): Struct, struct_mappers,
-        (map_enum, try_map_enum, enum_mapper): Enum, enum_mappers,
-        (map_variant, try_map_variant, variant_mapper): Variant, variant_mappers,
-        (map_fields, try_map_fields, fields_mapper): Fields, fields_mappers,
-        (map_field, try_map_field, field_mapper): Field, field_mappers
+        (map_struct, try_map_struct, struct_mapper, default_struct_mapper):
+            Struct, struct_mappers,
+
+        (map_enum, try_map_enum, enum_mapper, default_enum_mapper):
+            Enum, enum_mappers,
+
+        (map_variant, try_map_variant, variant_mapper, default_variant_mapper):
+            Variant, variant_mappers,
+
+        (map_fields, try_map_fields, fields_mapper, default_fields_mapper):
+            Fields, fields_mappers,
+
+        (map_field, try_map_field, field_mapper, default_field_mapper):
+            Field, field_mappers
     }
 
     fn _to_tokens(&mut self) -> Result<TokenStream> {
