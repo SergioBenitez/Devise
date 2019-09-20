@@ -25,7 +25,7 @@ macro_rules! validator {
 
 macro_rules! mappers {
     ($(($map_f:ident, $try_f:ident, $get_f:ident, $default_f:ident): $type:ty, $vec:ident),*) => (
-        crate fn push_default_mappers(&mut self) {
+        fn push_default_mappers(&mut self) {
             $(self.$vec.push(Box::new($default_f));)*
         }
 
@@ -66,20 +66,20 @@ pub struct DeriveGenerator {
     pub input: syn::DeriveInput,
     pub trait_impl: syn::ItemImpl,
     pub trait_path: syn::Path,
-    crate generic_support: GenericSupport,
-    crate data_support: DataSupport,
-    crate enum_validator: Box<dyn Fn(&DeriveGenerator, Enum) -> Result<()>>,
-    crate struct_validator: Box<dyn Fn(&DeriveGenerator, Struct) -> Result<()>>,
-    crate generics_validator: Box<dyn Fn(&DeriveGenerator, &::syn::Generics) -> Result<()>>,
-    crate fields_validator: Box<dyn Fn(&DeriveGenerator, Fields) -> Result<()>>,
-    crate type_generic_mapper: Option<Box<dyn Fn(&DeriveGenerator, &syn::Ident, &syn::TypeParam) -> TokenStream2>>,
-    crate generic_replacements: Vec<(usize, usize)>,
-    crate functions: Vec<Box<dyn Fn(&DeriveGenerator, TokenStream2) -> TokenStream2>>,
-    crate enum_mappers: Vec<Box<dyn Fn(&DeriveGenerator, Enum) -> MapResult>>,
-    crate struct_mappers: Vec<Box<dyn Fn(&DeriveGenerator, Struct) -> MapResult>>,
-    crate variant_mappers: Vec<Box<dyn Fn(&DeriveGenerator, Variant) -> MapResult>>,
-    crate fields_mappers: Vec<Box<dyn Fn(&DeriveGenerator, Fields) -> MapResult>>,
-    crate field_mappers: Vec<Box<dyn Fn(&DeriveGenerator, Field) -> MapResult>>,
+    generic_support: GenericSupport,
+    data_support: DataSupport,
+    enum_validator: Box<dyn Fn(&DeriveGenerator, Enum) -> Result<()>>,
+    struct_validator: Box<dyn Fn(&DeriveGenerator, Struct) -> Result<()>>,
+    generics_validator: Box<dyn Fn(&DeriveGenerator, &::syn::Generics) -> Result<()>>,
+    fields_validator: Box<dyn Fn(&DeriveGenerator, Fields) -> Result<()>>,
+    type_generic_mapper: Option<Box<dyn Fn(&DeriveGenerator, &syn::Ident, &syn::TypeParam) -> TokenStream2>>,
+    generic_replacements: Vec<(usize, usize)>,
+    functions: Vec<Box<dyn Fn(&DeriveGenerator, TokenStream2) -> TokenStream2>>,
+    enum_mappers: Vec<Box<dyn Fn(&DeriveGenerator, Enum) -> MapResult>>,
+    struct_mappers: Vec<Box<dyn Fn(&DeriveGenerator, Struct) -> MapResult>>,
+    variant_mappers: Vec<Box<dyn Fn(&DeriveGenerator, Variant) -> MapResult>>,
+    fields_mappers: Vec<Box<dyn Fn(&DeriveGenerator, Fields) -> MapResult>>,
+    field_mappers: Vec<Box<dyn Fn(&DeriveGenerator, Field) -> MapResult>>,
 }
 
 pub fn default_enum_mapper(gen: &DeriveGenerator, data: Enum) -> MapResult {

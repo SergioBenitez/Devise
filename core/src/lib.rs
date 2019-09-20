@@ -1,5 +1,4 @@
 #![feature(proc_macro_diagnostic, proc_macro_span)]
-#![feature(crate_visibility_modifier)]
 #![recursion_limit="256"]
 
 pub extern crate syn;

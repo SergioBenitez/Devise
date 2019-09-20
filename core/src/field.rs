@@ -49,7 +49,7 @@ impl<'p> FieldParent<'p> {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-crate enum FieldKind<'p> {
+enum FieldKind<'p> {
     Named(&'p Punctuated<syn::Field, syn::token::Comma>),
     Unnamed(&'p Punctuated<syn::Field, syn::token::Comma>),
     Unit
@@ -80,9 +80,9 @@ impl<'p> FieldKind<'p> {
 
 #[derive(Debug, Copy, Clone)]
 pub struct Fields<'p> {
-    crate parent: FieldParent<'p>,
-    crate kind: FieldKind<'p>,
-    crate span: Span,
+    parent: FieldParent<'p>,
+    kind: FieldKind<'p>,
+    span: Span,
 }
 
 impl<'f> Fields<'f> {
@@ -131,7 +131,7 @@ impl<'f> Fields<'f> {
         }
     }
 
-    crate fn surround(self, tokens: TokenStream2) -> TokenStream2 {
+    fn surround(self, tokens: TokenStream2) -> TokenStream2 {
         match self.kind {
             FieldKind::Named(..) => quote!({ #tokens }),
             FieldKind::Unnamed(..) => quote!(( #tokens )),
