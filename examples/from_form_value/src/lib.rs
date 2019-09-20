@@ -1,5 +1,3 @@
-#![feature(proc_macro_diagnostic)]
-
 #[macro_use] extern crate quote;
 extern crate devise;
 extern crate proc_macro;
@@ -14,14 +12,14 @@ pub fn derive_from_form_value(input: TokenStream) -> TokenStream {
         .validate_enum(|generator, data| {
             // This derive only works for variants that are nullary.
             for variant in data.variants() {
-                if !variant.fields().count() == 0 {
+                if !variant.fields().is_empty() {
                     return Err(variant.span().error("variants cannot have fields"));
                 }
             }
 
             // Emit a warning if the enum is empty.
             if data.variants.is_empty() {
-                generator.input.span().warning("deriving for empty enum").emit();
+                return Err(generator.input.span().warning("deriving for empty enum"));
             }
 
             Ok(())

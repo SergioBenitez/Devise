@@ -1,7 +1,9 @@
 use quote::ToTokens;
-use proc_macro2::TokenStream as TokenStream2;
-use devise::{FromMeta, MetaItem, Result, ext::Split2};
+use proc_macro2::TokenStream;
 use rocket_http as http;
+
+use devise::*;
+use devise::ext::Split2;
 
 pub struct ContentType(http::ContentType);
 
@@ -21,7 +23,7 @@ impl FromMeta for Status {
 }
 
 impl ToTokens for Status {
-    fn to_tokens(&self, tokens: &mut TokenStream2) {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
         let (code, reason) = (self.0.code, self.0.reason);
         tokens.extend(quote!(rocket::http::Status::new(#code, #reason)));
     }
@@ -36,7 +38,7 @@ impl FromMeta for ContentType {
 }
 
 impl ToTokens for ContentType {
-    fn to_tokens(&self, tokens: &mut TokenStream2) {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
         // Yeah, yeah. (((((i))).kn0w()))
         let media_type = MediaType((self.0).clone().0);
         tokens.extend(quote!(::rocket::http::ContentType(#media_type)));
@@ -44,7 +46,7 @@ impl ToTokens for ContentType {
 }
 
 impl ToTokens for MediaType {
-    fn to_tokens(&self, tokens: &mut TokenStream2) {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
         use std::iter::repeat;
         let (top, sub) = (self.0.top().as_str(), self.0.sub().as_str());
         let (keys, values) = self.0.params().split2();

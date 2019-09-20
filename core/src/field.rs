@@ -1,11 +1,13 @@
 use std::ops::Deref;
 
+use proc_macro2::Span;
+use quote::ToTokens;
+
 use syn::{self, Member, Index, punctuated::Punctuated};
-use proc_macro::Span;
-use proc_macro2::TokenStream as TokenStream2;
+use proc_macro2::TokenStream;
+use proc_macro2_diagnostics::Spanned;
 
 use derived::Derived;
-use spanned::Spanned;
 
 #[derive(Debug, Copy, Clone)]
 pub enum FieldParent<'p> {
@@ -27,10 +29,10 @@ impl<'p> FieldParent<'p> {
         let (mut span, kind) = match self {
             FieldParent::Variant(v) => (v.fields.span(), (&v.value.fields).into()),
             FieldParent::Struct(s) => (s.fields.span(), (&s.value.fields).into()),
-            FieldParent::Union(u) => (u.fields.span(), FieldKind::Named(&u.value.fields.named)),
+            FieldParent::Union(u) => (u.fields.span(), FieldsKind::Named(&u.value.fields.named)),
         };
 
-        if let FieldKind::Unit = kind {
+        if let FieldsKind::Unit = kind {
             span = match self {
                 FieldParent::Variant(v) => v.span(),
                 _ => self.input().span(),
@@ -49,27 +51,27 @@ impl<'p> FieldParent<'p> {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum FieldKind<'p> {
+enum FieldsKind<'p> {
     Named(&'p Punctuated<syn::Field, syn::token::Comma>),
     Unnamed(&'p Punctuated<syn::Field, syn::token::Comma>),
     Unit
 }
 
-impl<'a> From<&'a syn::Fields> for FieldKind<'a> {
+impl<'a> From<&'a syn::Fields> for FieldsKind<'a> {
     fn from(syn_fields: &'a syn::Fields) -> Self {
         match syn_fields {
-            syn::Fields::Named(ref fs) => FieldKind::Named(&fs.named),
-            syn::Fields::Unnamed(ref fs) => FieldKind::Unnamed(&fs.unnamed),
-            syn::Fields::Unit => FieldKind::Unit,
+            syn::Fields::Named(ref fs) => FieldsKind::Named(&fs.named),
+            syn::Fields::Unnamed(ref fs) => FieldsKind::Unnamed(&fs.unnamed),
+            syn::Fields::Unit => FieldsKind::Unit,
         }
     }
 }
 
-impl<'p> FieldKind<'p> {
+impl<'p> FieldsKind<'p> {
     fn fields(&self) -> Option<&'p Punctuated<syn::Field, syn::token::Comma>> {
         match self {
-            FieldKind::Named(inner) | FieldKind::Unnamed(inner) => Some(inner),
-            FieldKind::Unit => None
+            FieldsKind::Named(inner) | FieldsKind::Unnamed(inner) => Some(inner),
+            FieldsKind::Unit => None
         }
     }
 
@@ -81,7 +83,7 @@ impl<'p> FieldKind<'p> {
 #[derive(Debug, Copy, Clone)]
 pub struct Fields<'p> {
     parent: FieldParent<'p>,
-    kind: FieldKind<'p>,
+    kind: FieldsKind<'p>,
     span: Span,
 }
 
@@ -100,9 +102,9 @@ impl<'f> Fields<'f> {
 
     pub fn count(self) -> usize {
         match self.kind {
-            FieldKind::Named(fields) => fields.len(),
-            FieldKind::Unnamed(fields) => fields.len(),
-            FieldKind::Unit => 0
+            FieldsKind::Named(fields) => fields.len(),
+            FieldsKind::Unnamed(fields) => fields.len(),
+            FieldsKind::Unit => 0
         }
     }
 
@@ -112,34 +114,34 @@ impl<'f> Fields<'f> {
 
     pub fn are_named(self) -> bool {
         match self.kind {
-            FieldKind::Named(..) => true,
+            FieldsKind::Named(..) => true,
             _ => false
         }
     }
 
     pub fn are_unnamed(self) -> bool {
         match self.kind {
-            FieldKind::Unnamed(..) => true,
+            FieldsKind::Unnamed(..) => true,
             _ => false
         }
     }
 
     pub fn are_unit(self) -> bool {
         match self.kind {
-            FieldKind::Unit => true,
+            FieldsKind::Unit => true,
             _ => false
         }
     }
 
-    fn surround(self, tokens: TokenStream2) -> TokenStream2 {
+    fn surround(self, tokens: TokenStream) -> TokenStream {
         match self.kind {
-            FieldKind::Named(..) => quote!({ #tokens }),
-            FieldKind::Unnamed(..) => quote!(( #tokens )),
-            FieldKind::Unit => quote!()
+            FieldsKind::Named(..) => quote!({ #tokens }),
+            FieldsKind::Unnamed(..) => quote!(( #tokens )),
+            FieldsKind::Unit => quote!()
         }
     }
 
-    pub fn match_tokens(self) -> TokenStream2 {
+    pub fn match_tokens(self) -> TokenStream {
         // This relies on match ergonomics to work in either case.
         let idents = self.iter().map(|field| {
             let match_ident = field.match_ident();
@@ -154,9 +156,12 @@ impl<'f> Fields<'f> {
     }
 }
 
-impl<'f> Spanned for Fields<'f> {
-    fn span(&self) -> Span {
-        self.span
+impl<'a> ToTokens for Fields<'a> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self.kind.fields() {
+            Some(fields) => fields.to_tokens(tokens),
+            None => tokens.extend(quote_spanned!(self.span => (A,)))
+        }
     }
 }
 
@@ -177,7 +182,7 @@ impl<'f> Field<'f> {
         syn::Ident::new(&name, self.span().into())
     }
 
-    pub fn accessor(&self) -> TokenStream2 {
+    pub fn accessor(&self) -> TokenStream {
         if let FieldParent::Variant(_) = self.parent {
             let ident = self.match_ident();
             quote!(#ident)

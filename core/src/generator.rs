@@ -1,8 +1,7 @@
 use syn;
-use proc_macro::{TokenStream, Diagnostic};
-use proc_macro2::TokenStream as TokenStream2;
+use proc_macro2::TokenStream;
+use proc_macro2_diagnostics::{Spanned, SpanDiagExt, Diagnostic};
 
-use spanned::Spanned;
 use ext::GenericExt;
 
 use field::{Field, Fields};
@@ -10,7 +9,7 @@ use support::{GenericSupport, DataSupport};
 use derived::{Derived, Variant, Struct, Enum};
 
 pub type Result<T> = ::std::result::Result<T, Diagnostic>;
-pub type MapResult = Result<TokenStream2>;
+pub type MapResult = Result<TokenStream>;
 
 macro_rules! validator {
     ($fn_name:ident: $validate_fn_type:ty, $field:ident) => {
@@ -31,7 +30,7 @@ macro_rules! mappers {
 
         $(
             pub fn $map_f<F: 'static>(&mut self, f: F) -> &mut Self
-                where F: Fn(&DeriveGenerator, $type) -> TokenStream2
+                where F: Fn(&DeriveGenerator, $type) -> TokenStream
             {
                 if !self.$vec.is_empty() {
                     let last = self.$vec.len() - 1;
@@ -72,9 +71,9 @@ pub struct DeriveGenerator {
     struct_validator: Box<dyn Fn(&DeriveGenerator, Struct) -> Result<()>>,
     generics_validator: Box<dyn Fn(&DeriveGenerator, &::syn::Generics) -> Result<()>>,
     fields_validator: Box<dyn Fn(&DeriveGenerator, Fields) -> Result<()>>,
-    type_generic_mapper: Option<Box<dyn Fn(&DeriveGenerator, &syn::Ident, &syn::TypeParam) -> TokenStream2>>,
+    type_generic_mapper: Option<Box<dyn Fn(&DeriveGenerator, &syn::Ident, &syn::TypeParam) -> TokenStream>>,
     generic_replacements: Vec<(usize, usize)>,
-    functions: Vec<Box<dyn Fn(&DeriveGenerator, TokenStream2) -> TokenStream2>>,
+    functions: Vec<Box<dyn Fn(&DeriveGenerator, TokenStream) -> TokenStream>>,
     enum_mappers: Vec<Box<dyn Fn(&DeriveGenerator, Enum) -> MapResult>>,
     struct_mappers: Vec<Box<dyn Fn(&DeriveGenerator, Struct) -> MapResult>>,
     variant_mappers: Vec<Box<dyn Fn(&DeriveGenerator, Variant) -> MapResult>>,
@@ -118,7 +117,7 @@ pub fn default_variant_mapper(gen: &DeriveGenerator, data: Variant) -> MapResult
 }
 
 pub fn default_field_mapper(_gen: &DeriveGenerator, _data: Field) -> MapResult {
-    Ok(TokenStream2::new())
+    Ok(TokenStream::new())
 }
 
 pub fn default_fields_mapper(g: &DeriveGenerator, fields: Fields) -> MapResult {
@@ -130,11 +129,11 @@ pub fn default_fields_mapper(g: &DeriveGenerator, fields: Fields) -> MapResult {
 }
 
 impl DeriveGenerator {
-    pub fn build_for(input: TokenStream, trait_impl: TokenStream2) -> DeriveGenerator {
+    pub fn build_for2(input: TokenStream, trait_impl: TokenStream) -> DeriveGenerator {
         let trait_impl: syn::ItemImpl = syn::parse2(quote!(#trait_impl for Foo {}))
             .expect("invalid impl");
         let trait_path = trait_impl.trait_.clone().expect("impl does not have trait").1;
-        let input = syn::parse(input).expect("invalid derive input");
+        let input = syn::parse2(input).expect("invalid derive input");
 
         DeriveGenerator {
             input, trait_impl, trait_path,
@@ -155,6 +154,14 @@ impl DeriveGenerator {
         }
     }
 
+    #[inline]
+    pub fn build_for(
+        input: proc_macro::TokenStream,
+        trait_impl: TokenStream
+    ) -> DeriveGenerator {
+        Self::build_for2(input.into(), trait_impl)
+    }
+
     pub fn generic_support(&mut self, support: GenericSupport) -> &mut Self {
         self.generic_support = support;
         self
@@ -166,7 +173,7 @@ impl DeriveGenerator {
     }
 
     pub fn map_type_generic<F: 'static>(&mut self, f: F) -> &mut Self
-        where F: Fn(&DeriveGenerator, &syn::Ident, &syn::TypeParam) -> TokenStream2
+        where F: Fn(&DeriveGenerator, &syn::Ident, &syn::TypeParam) -> TokenStream
     {
         self.type_generic_mapper = Some(Box::new(f));
         self
@@ -182,8 +189,8 @@ impl DeriveGenerator {
     validator!(validate_generics: &syn::Generics, generics_validator);
     validator!(validate_fields: Fields, fields_validator);
 
-    pub fn function<F: 'static>(&mut self, f: F) -> &mut Self 
-        where F: Fn(&DeriveGenerator, TokenStream2) -> TokenStream2
+    pub fn function<F: 'static>(&mut self, f: F) -> &mut Self
+        where F: Fn(&DeriveGenerator, TokenStream) -> TokenStream
     {
         self.functions.push(Box::new(f));
         self.push_default_mappers();
@@ -350,7 +357,7 @@ impl DeriveGenerator {
             impl #impl_gen #trait_name for #target #ty_gen #where_gen {
                 #(#function_code)*
             }
-        }.into())
+        })
     }
 
     pub fn debug(&mut self) -> &mut Self {
@@ -362,13 +369,17 @@ impl DeriveGenerator {
         self
     }
 
-    pub fn to_tokens(&mut self) -> TokenStream {
+    pub fn to_tokens(&mut self) -> proc_macro::TokenStream {
+        self.to_tokens2().into()
+    }
+
+    pub fn to_tokens2(&mut self) -> TokenStream {
         // FIXME: Emit something like: Trait: msg.
         self._to_tokens()
             .unwrap_or_else(|diag| {
                 if let Some(last) = self.trait_path.segments.last() {
-                    use proc_macro::Span;
-                    use proc_macro::Level::*;
+                    use proc_macro2::Span;
+                    use proc_macro2_diagnostics::Level::*;
 
                     let id = &last.ident;
                     let msg = match diag.level() {
@@ -379,10 +390,10 @@ impl DeriveGenerator {
                         _ => format!("while deriving `{}`", id)
                     };
 
-                    diag.span_note(Span::call_site(), msg).emit();
+                    diag.span_note(Span::call_site(), msg).emit_as_tokens()
+                } else {
+                    diag.emit_as_tokens()
                 }
-
-                TokenStream::new().into()
             })
     }
 }

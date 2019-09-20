@@ -1,5 +1,3 @@
-#![feature(proc_macro_diagnostic)]
-
 #[macro_use] extern crate quote;
 extern crate devise;
 extern crate proc_macro;

@@ -4,7 +4,8 @@
 extern crate devise;
 extern crate proc_macro;
 
-use proc_macro::{TokenStream, Span};
+use proc_macro::TokenStream;
+use devise::proc_macro2::Span;
 use devise::*;
 
 const NO_EMPTY_FIELDS: &str = "fieldless structs or variants are not allowed";

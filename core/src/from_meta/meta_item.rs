@@ -1,14 +1,16 @@
 use syn::{self, punctuated::Punctuated};
+use proc_macro2::{Span, TokenStream};
+use quote::ToTokens;
+
+use proc_macro2_diagnostics::{SpanDiagExt, Spanned};
 
 use generator::Result;
-use spanned::Spanned;
-use proc_macro::Span;
 
 #[derive(Debug, Copy, Clone)]
 pub enum MetaItem<'a> {
     Path(&'a syn::Path),
     Literal(&'a syn::Lit),
-    KeyValue(&'a syn::Path, &'a syn::Lit),
+    KeyValue(&'a syn::MetaNameValue),
     List(MetaItemList<'a>)
 }
 
@@ -24,9 +26,9 @@ impl<'a> MetaItemList<'a> {
     }
 }
 
-impl<'a> Spanned for MetaItemList<'a> {
-    fn span(&self) -> Span {
-        self.iter.span()
+impl<'a> ToTokens for MetaItemList<'a> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        self.iter.to_tokens(tokens)
     }
 }
 
@@ -34,7 +36,7 @@ impl<'a> From<&'a syn::Meta> for MetaItem<'a> {
     fn from(meta: &syn::Meta) -> MetaItem {
         match meta {
             syn::Meta::Path(p) => MetaItem::Path(p),
-            syn::Meta::NameValue(nv) => MetaItem::KeyValue(&nv.path, &nv.lit),
+            syn::Meta::NameValue(nv) => MetaItem::KeyValue(&nv),
             syn::Meta::List(list) => {
                 MetaItem::List(MetaItemList { path: &list.path, iter: &list.nested })
             }
@@ -56,9 +58,9 @@ impl<'a> MetaItem<'a> {
         use MetaItem::*;
 
         match self {
-            Path(p) | KeyValue(p, _) | List(MetaItemList { path: p, .. }) => {
-                Some(p)
-            }
+            Path(p) => Some(p),
+            KeyValue(kv) => Some(&kv.path),
+            List(MetaItemList { path: p, .. }) => Some(&p),
             _ => None
         }
     }
@@ -93,28 +95,27 @@ impl<'a> MetaItem<'a> {
 
     pub fn lit(&self) -> Result<&syn::Lit> {
         match self {
-            MetaItem::Literal(lit) | MetaItem::KeyValue(_, lit) => Ok(lit),
+            MetaItem::Literal(lit) => Ok(lit),
+            MetaItem::KeyValue(kv) => Ok(&kv.lit),
             _ => Err(self.span().error("expected literal or key/value pair"))
         }
     }
 
     pub fn value_span(&self) -> Span {
         match self {
-            MetaItem::KeyValue(_, lit) => lit.span(),
+            MetaItem::KeyValue(kv) => kv.lit.span(),
             _ => self.span(),
         }
     }
 }
 
-impl<'a> Spanned for MetaItem<'a> {
-    fn span(&self) -> Span {
+impl<'a> ToTokens for MetaItem<'a> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
-            MetaItem::Path(p) => p.span(),
-            MetaItem::Literal(l) => l.span(),
-            MetaItem::KeyValue(i, l) => {
-                i.span().join(l.span()).unwrap_or(Span::call_site())
-            }
-            MetaItem::List(l) => l.span(),
+            MetaItem::Path(p) => p.to_tokens(tokens),
+            MetaItem::Literal(l) => l.to_tokens(tokens),
+            MetaItem::KeyValue(kv) => kv.to_tokens(tokens),
+            MetaItem::List(l) => l.to_tokens(tokens),
         }
     }
 }

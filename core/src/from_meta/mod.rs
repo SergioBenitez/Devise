@@ -4,9 +4,10 @@ use syn::{self, Lit::*};
 
 pub use self::meta_item::{MetaItem, MetaItemList};
 
+use proc_macro2::Span;
+use proc_macro2_diagnostics::{Spanned, SpanDiagExt};
+
 use generator::Result;
-use spanned::Spanned;
-use proc_macro::Span;
 
 // Spans of k/v pair, key, then value.
 #[derive(Copy, Clone)]

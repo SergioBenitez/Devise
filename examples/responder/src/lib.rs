@@ -1,4 +1,3 @@
-#![feature(proc_macro_diagnostic)]
 #![recursion_limit="128"]
 
 #[macro_use] extern crate quote;
@@ -9,8 +8,7 @@ extern crate rocket_http;
 mod http_attrs;
 
 use quote::ToTokens;
-use proc_macro::TokenStream;
-use proc_macro2::TokenStream as TokenStream2;
+use proc_macro2::TokenStream;
 use devise::{*, ext::TypeExt};
 
 use http_attrs::{ContentType, Status};
@@ -27,7 +25,7 @@ struct FieldAttr {
 }
 
 #[proc_macro_derive(Responder, attributes(response))]
-pub fn derive_responder(input: TokenStream) -> TokenStream {
+pub fn derive_responder(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     DeriveGenerator::build_for(input, quote!(impl<'__r> ::rocket::response::Responder<'__r>))
         .generic_support(GenericSupport::Lifetime)
         .data_support(DataSupport::Struct | DataSupport::Enum)
@@ -49,7 +47,7 @@ pub fn derive_responder(input: TokenStream) -> TokenStream {
             }
         })
         .try_map_fields(|_, fields| {
-            fn set_header_tokens<T: ToTokens + Spanned>(item: T) -> TokenStream2 {
+            fn set_header_tokens<T: ToTokens + Spanned>(item: T) -> TokenStream {
                 quote_spanned!(item.span().into() => __res.set_header(#item);)
             }
 

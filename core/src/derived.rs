@@ -1,7 +1,7 @@
 use syn;
 use quote::ToTokens;
 
-use proc_macro2::TokenStream as TokenStream2;
+use proc_macro2::TokenStream;
 use field::{Field, FieldParent, Fields};
 
 #[derive(Debug)]
@@ -31,7 +31,7 @@ impl<'p, T> ::std::ops::Deref for Derived<'p, T> {
 }
 
 impl<'p, T: ToTokens> ToTokens for Derived<'p, T> {
-    fn to_tokens(&self, tokens: &mut TokenStream2) {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
         self.value.to_tokens(tokens)
     }
 }
@@ -45,7 +45,7 @@ impl<'p, T> Clone for Derived<'p, T> {
 }
 
 impl<'f> Variant<'f> {
-    pub fn builder<F: Fn(Field) -> TokenStream2>(&self, f: F) -> TokenStream2 {
+    pub fn builder<F: Fn(Field) -> TokenStream>(&self, f: F) -> TokenStream {
         let variant = &self.ident;
         let expression = self.fields().iter().map(f);
         let enum_name = &self.derive_input.ident;

@@ -15,6 +15,3 @@ doc = false
 [dependencies]
 quote = "1.0"
 devise = { path = "../../lib" }
-
-# used by main.rs
-rocket = { git = "https://github.com/SergioBenitez/Rocket" }
