@@ -22,3 +22,4 @@ pub use generator::*;
 pub use from_meta::*;
 pub use derived::*;
 pub use proc_macro2_diagnostics::*;
+pub use syn::spanned::Spanned;

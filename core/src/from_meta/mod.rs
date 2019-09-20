@@ -1,13 +1,12 @@
 mod meta_item;
 
-use syn::{self, Lit::*};
-
-pub use self::meta_item::{MetaItem, MetaItemList};
-
+use syn::{self, Lit::*, spanned::Spanned};
+use proc_macro2_diagnostics::SpanDiagExt;
 use proc_macro2::Span;
-use proc_macro2_diagnostics::{Spanned, SpanDiagExt};
 
 use generator::Result;
+
+pub use self::meta_item::{MetaItem, MetaItemList};
 
 // Spans of k/v pair, key, then value.
 #[derive(Copy, Clone)]

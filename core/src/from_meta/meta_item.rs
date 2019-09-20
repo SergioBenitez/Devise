@@ -1,8 +1,7 @@
-use syn::{self, punctuated::Punctuated};
-use proc_macro2::{Span, TokenStream};
 use quote::ToTokens;
-
-use proc_macro2_diagnostics::{SpanDiagExt, Spanned};
+use proc_macro2::{Span, TokenStream};
+use proc_macro2_diagnostics::SpanDiagExt;
+use syn::{self, punctuated::Punctuated, spanned::Spanned};
 
 use generator::Result;
 

@@ -1,7 +1,7 @@
 #![recursion_limit="256"]
 
-extern crate proc_macro;
 #[macro_use] extern crate quote;
+extern crate proc_macro;
 extern crate devise_core;
 
 use proc_macro::TokenStream;

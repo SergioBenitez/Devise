@@ -1,6 +1,6 @@
-use syn;
+use syn::{self, spanned::Spanned};
 use proc_macro2::TokenStream;
-use proc_macro2_diagnostics::{Spanned, SpanDiagExt, Diagnostic};
+use proc_macro2_diagnostics::{SpanDiagExt, Diagnostic};
 
 use ext::GenericExt;
 

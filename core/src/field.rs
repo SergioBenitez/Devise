@@ -1,11 +1,8 @@
 use std::ops::Deref;
 
-use proc_macro2::Span;
 use quote::ToTokens;
-
-use syn::{self, Member, Index, punctuated::Punctuated};
-use proc_macro2::TokenStream;
-use proc_macro2_diagnostics::Spanned;
+use proc_macro2::{Span, TokenStream};
+use syn::{self, Member, Index, punctuated::Punctuated, spanned::Spanned};
 
 use derived::Derived;
 

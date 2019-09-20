@@ -9,6 +9,6 @@ repository = "https://github.com/SergioBenitez/Devise"
 [dependencies]
 quote = "1.0"
 proc-macro2 = "1.0"
-proc-macro2-diagnostics = { git = "https://github.com/SergioBenitez/proc-macro2-diagnostics" }
+proc-macro2-diagnostics = { git = "https://github.com/SergioBenitez/proc-macro2-diagnostics", rev = "885ec2e8c"}
 syn = { version = "1.0", features = ["full", "parsing", "extra-traits"] }
 bitflags = "1.0"

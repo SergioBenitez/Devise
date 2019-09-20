@@ -34,7 +34,7 @@ enum Foo {
 // }
 
 // #[derive(FromFormValue)]
-// enum Bar {
+// enum Bar2 {
 //     OptionA(usize),
 // }
 
