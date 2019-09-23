@@ -1,12 +1,10 @@
-#![feature(proc_macro_diagnostic)]
-
 #[macro_use] extern crate quote;
 extern crate devise;
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use devise::proc_macro2::Span;
-use devise::*;
+use devise::{*, ext::SpanDiagnosticExt};
 
 const NO_EMPTY_FIELDS: &str = "fieldless structs or variants are not allowed";
 const NO_NULLARY: &str = "nullary items are not allowed";

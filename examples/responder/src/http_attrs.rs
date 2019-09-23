@@ -2,8 +2,7 @@ use quote::ToTokens;
 use proc_macro2::TokenStream;
 use rocket_http as http;
 
-use devise::*;
-use devise::ext::Split2;
+use devise::{*, ext::{Split2, SpanDiagnosticExt}};
 
 pub struct ContentType(http::ContentType);
 

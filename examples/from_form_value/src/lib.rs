@@ -3,7 +3,7 @@ extern crate devise;
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
-use devise::*;
+use devise::{*, ext::SpanDiagnosticExt};
 
 #[proc_macro_derive(FromFormValue)]
 pub fn derive_from_form_value(input: TokenStream) -> TokenStream {

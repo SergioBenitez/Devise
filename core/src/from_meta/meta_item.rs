@@ -1,6 +1,6 @@
 use quote::ToTokens;
 use proc_macro2::{Span, TokenStream};
-use proc_macro2_diagnostics::SpanDiagExt;
+use proc_macro2_diagnostics::SpanDiagnosticExt;
 use syn::{self, punctuated::Punctuated, spanned::Spanned};
 
 use generator::Result;

@@ -1,3 +1,5 @@
+pub use proc_macro2_diagnostics::SpanDiagnosticExt;
+
 use syn::{*, punctuated::Punctuated, token::Comma};
 
 pub trait PathExt {

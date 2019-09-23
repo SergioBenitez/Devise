@@ -1,7 +1,7 @@
 mod meta_item;
 
 use syn::{self, Lit::*, spanned::Spanned};
-use proc_macro2_diagnostics::SpanDiagExt;
+use proc_macro2_diagnostics::SpanDiagnosticExt;
 use proc_macro2::Span;
 
 use generator::Result;

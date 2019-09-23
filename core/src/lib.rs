@@ -21,5 +21,5 @@ pub use support::{GenericSupport, DataSupport};
 pub use generator::*;
 pub use from_meta::*;
 pub use derived::*;
-pub use proc_macro2_diagnostics::*;
+pub use proc_macro2_diagnostics::{Diagnostic, Level};
 pub use syn::spanned::Spanned;
