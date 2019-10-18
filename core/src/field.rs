@@ -48,7 +48,7 @@ impl<'p> FieldParent<'p> {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum FieldsKind<'p> {
+pub(crate) enum FieldsKind<'p> {
     Named(&'p Punctuated<syn::Field, syn::token::Comma>),
     Unnamed(&'p Punctuated<syn::Field, syn::token::Comma>),
     Unit
@@ -80,7 +80,7 @@ impl<'p> FieldsKind<'p> {
 #[derive(Debug, Copy, Clone)]
 pub struct Fields<'p> {
     parent: FieldParent<'p>,
-    kind: FieldsKind<'p>,
+    pub(crate) kind: FieldsKind<'p>,
     span: Span,
 }
 
@@ -150,6 +150,14 @@ impl<'f> Fields<'f> {
         });
 
         self.surround(quote!(#(#idents),*))
+    }
+
+    pub fn builder<F: Fn(Field) -> TokenStream>(&self, f: F) -> TokenStream {
+        match self.parent {
+            FieldParent::Struct(s) => s.builder(f),
+            FieldParent::Variant(v) => v.builder(f),
+            FieldParent::Union(_) => panic!("unions are not supported")
+        }
     }
 }
 
