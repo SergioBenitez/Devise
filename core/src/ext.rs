@@ -22,6 +22,10 @@ pub trait GenericExt {
     fn kind(&self) -> GenericKind;
 }
 
+pub trait GenericParamExt {
+    fn ident(&self) -> &Ident;
+}
+
 pub trait Split2<A, B>: Sized + Iterator {
     fn split2(self) -> (Vec<A>, Vec<B>);
 }
@@ -212,5 +216,34 @@ impl GenericExt for GenericParam {
             GenericParam::Type(..) => GenericKind::Type,
             GenericParam::Const(..) => GenericKind::Const,
         }
+    }
+}
+
+impl GenericParamExt for GenericParam {
+    fn ident(&self) -> &Ident {
+        match self {
+            &GenericParam::Type(ref ty) => &ty.ident,
+            &GenericParam::Lifetime(ref l) => &l.lifetime.ident,
+            &GenericParam::Const(ref c) => &c.ident,
+        }
+    }
+}
+
+use syn::visit_mut::VisitMut;
+
+pub struct IdentReplacer<'a> {
+    pub to_replace: &'a Ident,
+    pub with: &'a Ident,
+    pub replaced: bool
+}
+
+impl<'a> VisitMut for IdentReplacer<'a> {
+    fn visit_ident_mut(&mut self, i: &mut Ident) {
+        if i == self.to_replace {
+            *i = self.with.clone();
+            self.replaced = true;
+        }
+
+        visit_mut::visit_ident_mut(self, i);
     }
 }

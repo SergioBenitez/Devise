@@ -1,8 +1,8 @@
-use syn::{self, spanned::Spanned};
+use syn::{self, spanned::Spanned, visit_mut::VisitMut};
 use proc_macro2::TokenStream;
 use proc_macro2_diagnostics::{SpanDiagnosticExt, Diagnostic};
 
-use ext::GenericExt;
+use ext::{GenericExt, GenericParamExt, IdentReplacer};
 
 use field::{Field, Fields};
 use support::{GenericSupport, DataSupport};
@@ -179,8 +179,12 @@ impl DeriveGenerator {
         self
     }
 
-    pub fn replace_generic(&mut self, trait_gen: usize, impl_gen: usize) -> &mut Self {
-        self.generic_replacements.push((trait_gen, impl_gen));
+    pub fn replace_generic(
+        &mut self,
+        use_trait_gen: usize,
+        in_place_of_type_gen: usize
+    ) -> &mut Self {
+        self.generic_replacements.push((use_trait_gen, in_place_of_type_gen));
         self
     }
 
@@ -214,7 +218,7 @@ impl DeriveGenerator {
             Field, field_mappers
     }
 
-    fn _to_tokens(&mut self) -> Result<TokenStream> {
+    fn _to_tokens(&self) -> Result<TokenStream> {
         use syn::*;
 
         // Step 1: Run all validators.
@@ -297,60 +301,62 @@ impl DeriveGenerator {
             function_code.push(function(self, inner));
         }
 
-        // Step 2b: Create a couple of generics to mutate with user's input.
-        let mut generics = self.input.generics.clone();
+        // Step 2b: Copy user's generics to mutate with bounds + replacements.
+        let mut type_generics = self.input.generics.clone();
 
-        // Step 2c: Add additional where bounds if the generator asks for it.
+        // Step 2c: Add an additional where bounds for each type parameter using
+        // the: `type_mapper(T) -> quote!(T: Foo)` adds `where T: Foo`.
         if let Some(ref type_mapper) = self.type_generic_mapper {
             for ty in self.input.generics.type_params() {
                 let new_ty = type_mapper(self, &ty.ident, ty);
                 let clause = syn::parse2(new_ty).expect("invalid type generic mapping");
-                generics.make_where_clause().predicates.push(clause);
+                type_generics.make_where_clause().predicates.push(clause);
             }
         }
 
-        // Step 2d: Add any generics in the trait.
-        let mut generics_for_impl_generics = generics.clone();
-        for (i, trait_param) in self.trait_impl.generics.params.iter().enumerate() {
-            // Step 2d.0: Perform a generic replacement if requested. Here,
-            // we determine if a generic (i) in the trait is going to replace a
-            // generic in the user's type (the `jth` of the right kind).
-            let replacement = self.generic_replacements.iter()
-                .filter(|r| r.0 == i)
-                .next();
+        // Step 2d: Perform generic replacememnt: replace generics in the input
+        // type with generics from the trait definition: 1) determine the
+        // identifer of the generic to be replaced in the type. 2) replace every
+        // identifer in the type with the same name with the identifer of the
+        // replacement trait generic. For example:
+        //   * replace: trait_i = 1, type_i = 0
+        //   * trait: impl<'_a, '_b: '_a> GenExample<'_a, '_b>
+        //   * type: GenFooAB<'x, 'y: 'x>
+        //   * new type: GenFooAB<'_b, 'y: 'b>
+        for (trait_i, type_i) in &self.generic_replacements {
+            let idents = self.trait_impl.generics.params.iter()
+                .nth(*trait_i)
+                .and_then(|trait_gen| type_generics.params.iter()
+                    .filter(|gen| gen.kind() == trait_gen.kind())
+                    .nth(*type_i)
+                    .map(|type_gen| (trait_gen.ident(), type_gen.ident().clone())));
 
-            if let Some((_, j)) = replacement {
-                use syn::{punctuated::Punctuated, token::Comma};
-
-                // Step 2d.1: Actually perform the replacement.
-                let replace_in = |ps: &mut Punctuated<GenericParam, Comma>| -> bool {
-                    ps.iter_mut()
-                        .filter(|param| param.kind() == trait_param.kind())
-                        .nth(*j)
-                        .map(|impl_param| *impl_param = trait_param.clone())
-                        .is_some()
-                };
-
-                // Step 2d.2: If it fails, insert a new impl generic.
-                // NOTE: It's critical that `generics` is attempted first!
-                // Otherwise, we might replace generics that don't exist in the
-                // user's type.
-                if !replace_in(&mut generics.params)
-                    || !replace_in(&mut generics_for_impl_generics.params)
-                {
-                    generics_for_impl_generics.params.insert(0, trait_param.clone());
-                }
-            } else {
-                // Step 2d.2: Otherwise, insert a new impl<..> generic.
-                generics_for_impl_generics.params.insert(0, trait_param.clone());
+            if let Some((with, ref to_replace)) = idents {
+                let mut replacer = IdentReplacer { to_replace, with, replaced: false };
+                replacer.visit_generics_mut(&mut type_generics);
             }
         }
 
-        // Step 2e: Split the generics, but use the `impl_generics` from above.
-        let (impl_gen, _, _) = generics_for_impl_generics.split_for_impl();
-        let (_, ty_gen, where_gen) = generics.split_for_impl();
+        // Step 2e: Determine which generics from the type need to be added to
+        // the trait's `impl<>` generics. These are all of the generics in the
+        // type that aren't in the trait's `impl<>` already.
+        let mut type_generics_for_impl = self.trait_impl.generics.clone();
+        for type_gen in &type_generics.params {
+            let type_gen_in_trait_gens = type_generics_for_impl.params.iter()
+                .map(|gen| gen.ident())
+                .find(|g| g == &type_gen.ident())
+                .is_some();
 
-        // Step 2b: Generate the complete implementation.
+            if !type_gen_in_trait_gens {
+                type_generics_for_impl.params.push(type_gen.clone())
+            }
+        }
+
+        // Step 2f: Split the generics, but use the `impl_generics` from above.
+        let (impl_gen, _, _) = type_generics_for_impl.split_for_impl();
+        let (_, ty_gen, where_gen) = type_generics.split_for_impl();
+
+        // Step 2g: Generate the complete implementation.
         let target = &self.input.ident;
         let trait_name = &self.trait_path;
         Ok(quote! {
