@@ -26,10 +26,10 @@ struct FieldAttr {
 
 #[proc_macro_derive(Responder, attributes(response))]
 pub fn derive_responder(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    DeriveGenerator::build_for(input, quote!(impl<'__r> ::rocket::response::Responder<'__r>))
+    DeriveGenerator::build_for(input, quote!(impl<'__r, '__o: '__r> ::rocket::response::Responder<'__r, '__o>))
         .generic_support(GenericSupport::Lifetime)
         .data_support(DataSupport::Struct | DataSupport::Enum)
-        .replace_generic(0, 0)
+        .replace_generic(1, 0)
         .validate_generics(|_, generics| match generics.lifetimes().count() > 1 {
             true => Err(generics.span().error("only one lifetime is supported")),
             false => Ok(())
@@ -41,8 +41,8 @@ pub fn derive_responder(input: proc_macro::TokenStream) -> proc_macro::TokenStre
         .function(|_, inner| quote! {
             fn respond_to(
                 self,
-                __req: &::rocket::Request
-            ) -> ::rocket::response::Result<'__r> {
+                __req: &'__r ::rocket::Request
+            ) -> ::rocket::response::Result<'__o> {
                 #inner
             }
         })
