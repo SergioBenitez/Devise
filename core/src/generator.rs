@@ -384,7 +384,7 @@ impl DeriveGenerator {
     }
 
     pub fn to_tokens2(&mut self) -> TokenStream {
-        self.try_to_tokens2().unwrap_or_else(|diag| diag.emit_as_tokens())
+        self.try_to_tokens2().unwrap_or_else(|diag| diag.emit_as_item_tokens())
     }
 
     pub fn try_to_tokens2(&mut self) -> Result<TokenStream> {
