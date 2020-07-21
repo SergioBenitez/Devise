@@ -48,7 +48,7 @@ pub trait FromMeta: Sized {
 
         if let Some(extra) = matches.next() {
             let msg = format!("duplicate invocation of `{}` attribute", name);
-            return Some(Err(extra.span().error(msg)));
+            return Some(Err(extra.path.span().error(msg)));
         }
 
         Some(Self::from_attr(name, attr))

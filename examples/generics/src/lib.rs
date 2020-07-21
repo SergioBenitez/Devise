@@ -14,7 +14,6 @@ pub fn derive_generic_example(input: TokenStream) -> TokenStream {
         .function(|_, _| quote! {
             fn example(self) -> T { unimplemented!() }
         })
-        .debug()
         .to_tokens()
 }
 
@@ -38,6 +37,5 @@ pub fn derive_gen_example(input: TokenStream) -> TokenStream {
         .function(|_, _| quote! {
             fn gen(&self, s: &'__a str) -> &'__b str { self.0 }
         })
-        .debug()
         .to_tokens()
 }
