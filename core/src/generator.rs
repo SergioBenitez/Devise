@@ -379,10 +379,18 @@ impl DeriveGenerator {
         self.to_tokens2().into()
     }
 
+    pub fn try_to_tokens(&mut self) -> Result<proc_macro::TokenStream> {
+        self.try_to_tokens2().map(|t| t.into())
+    }
+
     pub fn to_tokens2(&mut self) -> TokenStream {
+        self.try_to_tokens2().unwrap_or_else(|diag| diag.emit_as_tokens())
+    }
+
+    pub fn try_to_tokens2(&mut self) -> Result<TokenStream> {
         // FIXME: Emit something like: Trait: msg.
         self._to_tokens()
-            .unwrap_or_else(|diag| {
+            .map_err(|diag| {
                 if let Some(last) = self.trait_path.segments.last() {
                     use proc_macro2::Span;
                     use proc_macro2_diagnostics::Level::*;
@@ -396,9 +404,9 @@ impl DeriveGenerator {
                         _ => format!("while deriving `{}`", id)
                     };
 
-                    diag.span_note(Span::call_site(), msg).emit_as_tokens()
+                    diag.span_note(Span::call_site(), msg)
                 } else {
-                    diag.emit_as_tokens()
+                    diag
                 }
             })
     }
