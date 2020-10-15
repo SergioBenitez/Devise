@@ -1,14 +1,11 @@
 use quote::ToTokens;
 use proc_macro2::TokenStream;
-use rocket_http as http;
 
-use devise::{*, ext::{Split2, SpanDiagnosticExt}};
+use devise::{*, ext::SpanDiagnosticExt};
 
-pub struct ContentType(http::ContentType);
+pub struct ContentType(String, String);
 
-pub struct Status(http::Status);
-
-struct MediaType(http::MediaType);
+pub struct Status(u16);
 
 impl FromMeta for Status {
     fn from_meta(meta: MetaItem) -> Result<Self> {
@@ -17,55 +14,32 @@ impl FromMeta for Status {
             return Err(meta.value_span().error("status must be in range [100, 600)"));
         }
 
-        Ok(Status(http::Status::raw(num as u16)))
+        Ok(Status(num as u16))
     }
 }
 
 impl ToTokens for Status {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let (code, reason) = (self.0.code, self.0.reason);
-        tokens.extend(quote!(rocket::http::Status::new(#code, #reason)));
+        let code = self.0;
+        tokens.extend(quote!(rocket::http::Status(#code)));
     }
 }
 
 impl FromMeta for ContentType {
     fn from_meta(meta: MetaItem) -> Result<Self> {
-        http::ContentType::parse_flexible(&String::from_meta(meta)?)
-            .map(ContentType)
-            .ok_or(meta.value_span().error("invalid or unknown content-type"))
+        let string = String::from_meta(meta)?;
+        let splits = string.split('/').collect::<Vec<_>>();
+        if splits.len() != 2 {
+            return Err(meta.value_span().error("invalid or unknown content-type"));
+        }
+
+        Ok(ContentType(splits[0].into(), splits[1].into()))
     }
 }
 
 impl ToTokens for ContentType {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        // Yeah, yeah. (((((i))).kn0w()))
-        let media_type = MediaType((self.0).clone().0);
-        tokens.extend(quote!(::rocket::http::ContentType(#media_type)));
-    }
-}
-
-impl ToTokens for MediaType {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        use std::iter::repeat;
-        let (top, sub) = (self.0.top().as_str(), self.0.sub().as_str());
-        let (keys, values) = self.0.params().split2();
-
-        let cow = quote!(::std::borrow::Cow);
-        let (pub_http, http) = (quote!(::rocket::http), quote!(::rocket::http::private));
-        let (http_, http__) = (repeat(&http), repeat(&http));
-        let (cow_, cow__) = (repeat(&cow), repeat(&cow));
-
-        // TODO: Produce less code when possible (for known media types).
-        tokens.extend(quote!(#pub_http::MediaType {
-            source: #http::Source::None,
-            top: #http::Indexed::Concrete(#cow::Borrowed(#top)),
-            sub: #http::Indexed::Concrete(#cow::Borrowed(#sub)),
-            params: #http::MediaParams::Static(&[
-                #((
-                    #http_::Indexed::Concrete(#cow_::Borrowed(#keys)),
-                    #http__::Indexed::Concrete(#cow__::Borrowed(#values))
-                )),*
-            ])
-        }))
+        let (top, bottom) = (&self.0, &self.1);
+        tokens.extend(quote!(::rocket::http::ContentType(#top, #bottom)));
     }
 }

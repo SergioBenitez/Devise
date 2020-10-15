@@ -16,7 +16,3 @@ doc = false
 quote = "1.0"
 devise = { path = "../../lib" }
 proc-macro2 = "1.0"
-rocket_http = { git = "https://github.com/SergioBenitez/Rocket" }
-
-# used by main.rs
-rocket = { git = "https://github.com/SergioBenitez/Rocket" }

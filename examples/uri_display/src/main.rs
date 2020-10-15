@@ -1,13 +1,9 @@
 #[macro_use] extern crate uri_display;
-extern crate rocket;
-extern crate smallvec;
 
 use std::fmt;
-use smallvec::SmallVec;
-use rocket::http::uri::Uri;
 
 pub struct Formatter<'i, 'f: 'i> {
-    prefixes: SmallVec<[&'static str; 3]>,
+    prefixes: Vec<&'static str>,
     inner: &'i mut fmt::Formatter<'f>,
     previous: bool,
     fresh: bool
@@ -84,7 +80,8 @@ pub trait UriDisplay {
 
 impl UriDisplay for str {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.write_raw(&Uri::percent_encode(self))
+        // in realty, we'd percent-encode
+        f.write_raw(self)
     }
 }
 
@@ -109,7 +106,7 @@ impl<'a, T: UriDisplay> UriDisplay for &'a T {
 impl<'a> fmt::Display for &'a dyn UriDisplay {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = Formatter {
-            prefixes: SmallVec::new(),
+            prefixes: Vec::new(),
             inner: f,
             previous: false,
             fresh: true,
