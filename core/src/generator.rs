@@ -1,317 +1,184 @@
-use syn::{self, spanned::Spanned, visit_mut::VisitMut};
+use std::ops::Deref;
+
 use proc_macro2::TokenStream;
+use syn::{self, Token, punctuated::Punctuated, spanned::Spanned};
 use proc_macro2_diagnostics::{SpanDiagnosticExt, Diagnostic};
+use quote::ToTokens;
 
-use ext::{GenericExt, GenericParamExt, IdentReplacer};
+use crate::ext::{GenericExt, GenericParamExt, GenericsExt};
+use crate::support::Support;
+use crate::derived::{ItemInput, Input};
+use crate::mapper::Mapper;
+use crate::validator::Validator;
 
-use field::{Field, Fields};
-use support::{GenericSupport, DataSupport};
-use derived::{Derived, Variant, Struct, Enum};
+pub type Result<T> = std::result::Result<T, Diagnostic>;
 
-pub type Result<T> = ::std::result::Result<T, Diagnostic>;
-pub type MapResult = Result<TokenStream>;
+pub struct TraitItem {
+    item: syn::ItemImpl,
+    pub path: syn::Path,
+    pub name: syn::Ident,
+}
 
-macro_rules! validator {
-    ($fn_name:ident: $validate_fn_type:ty, $field:ident) => {
-        pub fn $fn_name<F: 'static>(&mut self, f: F) -> &mut Self
-            where F: Fn(&DeriveGenerator, $validate_fn_type) -> Result<()>
-        {
-            self.$field = Box::new(f);
-            self
-        }
+impl TraitItem {
+    fn parse<T: ToTokens>(raw: T) -> Self {
+        let item: syn::ItemImpl = syn::parse2(quote!(#raw for Foo {}))
+            .expect("invalid impl token stream");
+
+        let path = item.trait_.clone()
+            .expect("impl does not have trait")
+            .1;
+
+        let name = path.segments.last()
+            .map(|s| s.ident.clone())
+            .expect("trait to impl for is empty");
+
+        Self { item, path, name }
     }
 }
 
-macro_rules! mappers {
-    ($(($map_f:ident, $try_f:ident, $get_f:ident, $default_f:ident): $type:ty, $vec:ident),*) => (
-        fn push_default_mappers(&mut self) {
-            $(self.$vec.push(Box::new($default_f));)*
-        }
+impl Deref for TraitItem {
+    type Target = syn::ItemImpl;
 
-        $(
-            pub fn $map_f<F: 'static>(&mut self, f: F) -> &mut Self
-                where F: Fn(&DeriveGenerator, $type) -> TokenStream
-            {
-                if !self.$vec.is_empty() {
-                    let last = self.$vec.len() - 1;
-                    self.$vec[last] = Box::new(move |g, v| Ok(f(g, v)));
-                }
-
-                self
-            }
-
-            pub fn $try_f<F: 'static>(&mut self, f: F) -> &mut Self
-                where F: Fn(&DeriveGenerator, $type) -> MapResult
-            {
-                if !self.$vec.is_empty() {
-                    let last = self.$vec.len() - 1;
-                    self.$vec[last] = Box::new(f);
-                }
-
-                self
-            }
-
-            pub fn $get_f(&self) -> &Box<dyn Fn(&DeriveGenerator, $type) -> MapResult> {
-                assert!(!self.$vec.is_empty());
-                let last = self.$vec.len() - 1;
-                &self.$vec[last]
-            }
-        )*
-    )
+    fn deref(&self) -> &Self::Target {
+        &self.item
+    }
 }
 
-// FIXME: Take a `Box<Fn>` everywhere so we can capture args!
 pub struct DeriveGenerator {
-    pub input: syn::DeriveInput,
-    pub trait_impl: syn::ItemImpl,
-    pub trait_path: syn::Path,
-    generic_support: GenericSupport,
-    data_support: DataSupport,
-    enum_validator: Box<dyn Fn(&DeriveGenerator, Enum) -> Result<()>>,
-    struct_validator: Box<dyn Fn(&DeriveGenerator, Struct) -> Result<()>>,
-    generics_validator: Box<dyn Fn(&DeriveGenerator, &::syn::Generics) -> Result<()>>,
-    fields_validator: Box<dyn Fn(&DeriveGenerator, Fields) -> Result<()>>,
-    type_generic_mapper: Option<Box<dyn Fn(&DeriveGenerator, &syn::Ident, &syn::TypeParam) -> TokenStream>>,
+    pub input: ItemInput,
+    pub item: TraitItem,
+    pub support: Support,
+    pub validator: Option<Box<dyn Validator>>,
+    pub inner_mappers: Vec<Box<dyn Mapper>>,
+    pub outer_mappers: Vec<Box<dyn Mapper>>,
+    pub type_bounds: Vec<Punctuated<syn::TypeParamBound, Token![+]>>,
     generic_replacements: Vec<(usize, usize)>,
-    functions: Vec<Box<dyn Fn(&DeriveGenerator, TokenStream) -> TokenStream>>,
-    enum_mappers: Vec<Box<dyn Fn(&DeriveGenerator, Enum) -> MapResult>>,
-    struct_mappers: Vec<Box<dyn Fn(&DeriveGenerator, Struct) -> MapResult>>,
-    variant_mappers: Vec<Box<dyn Fn(&DeriveGenerator, Variant) -> MapResult>>,
-    fields_mappers: Vec<Box<dyn Fn(&DeriveGenerator, Fields) -> MapResult>>,
-    field_mappers: Vec<Box<dyn Fn(&DeriveGenerator, Field) -> MapResult>>,
-}
-
-pub fn default_enum_mapper(gen: &DeriveGenerator, data: Enum) -> MapResult {
-    let variant = data.variants().map(|v| &v.value.ident);
-    let fields = data.variants().map(|v| v.fields().match_tokens());
-    let enum_name = ::std::iter::repeat(&data.derive_input.ident);
-    let expression = data.variants()
-        .map(|v| gen.variant_mapper()(gen, v))
-        .collect::<Result<Vec<_>>>()?;
-
-    Ok(quote! {
-        // FIXME: Check if we can also use id_match_tokens due to match
-        // ergonomics. I don't think so, though. If we can't, then ask (in
-        // `function`) whether receiver is `&self`, `&mut self` or `self` and
-        // bind match accordingly.
-        match self {
-            #(#enum_name::#variant #fields => { #expression }),*
-        }
-    })
-}
-
-pub fn null_enum_mapper(gen: &DeriveGenerator, data: Enum) -> MapResult {
-    let expression = data.variants()
-        .map(|v| gen.variant_mapper()(gen, v))
-        .collect::<Result<Vec<_>>>()?;
-
-    Ok(quote!(#(#expression)*))
-}
-
-pub fn default_struct_mapper(gen: &DeriveGenerator, data: Struct) -> MapResult {
-    gen.fields_mapper()(gen, data.fields())
-}
-
-pub fn default_variant_mapper(gen: &DeriveGenerator, data: Variant) -> MapResult {
-    gen.fields_mapper()(gen, data.fields())
-}
-
-pub fn default_field_mapper(_gen: &DeriveGenerator, _data: Field) -> MapResult {
-    Ok(TokenStream::new())
-}
-
-pub fn default_fields_mapper(g: &DeriveGenerator, fields: Fields) -> MapResult {
-    let field = fields.iter()
-        .map(|field| g.field_mapper()(g, field))
-        .collect::<Result<Vec<_>>>()?;
-
-    Ok(quote!({ #(#field)* }))
 }
 
 impl DeriveGenerator {
-    pub fn build_for2(input: TokenStream, trait_impl: TokenStream) -> DeriveGenerator {
-        let trait_impl: syn::ItemImpl = syn::parse2(quote!(#trait_impl for Foo {}))
-            .expect("invalid impl");
-        let trait_path = trait_impl.trait_.clone().expect("impl does not have trait").1;
-        let input = syn::parse2(input).expect("invalid derive input");
+    pub fn build_for<I, T>(input: I, trait_impl: T) -> DeriveGenerator
+        where I: Into<TokenStream>, T: ToTokens
+    {
+        let item = TraitItem::parse(trait_impl);
+        let input: syn::DeriveInput = syn::parse2(input.into())
+            .expect("invalid derive input");
 
         DeriveGenerator {
-            input, trait_impl, trait_path,
-            generic_support: GenericSupport::None,
-            data_support: DataSupport::None,
-            type_generic_mapper: None,
+            item,
+            input: input.into(),
+            support: Support::default(),
             generic_replacements: vec![],
-            enum_validator: Box::new(|_, _| Ok(())),
-            struct_validator: Box::new(|_, _| Ok(())),
-            generics_validator: Box::new(|_, _| Ok(())),
-            fields_validator: Box::new(|_, _| Ok(())),
-            functions: vec![],
-            enum_mappers: vec![],
-            struct_mappers: vec![],
-            variant_mappers: vec![],
-            field_mappers: vec![],
-            fields_mappers: vec![],
+            validator: None,
+            type_bounds: vec![],
+            inner_mappers: vec![],
+            outer_mappers: vec![],
         }
     }
 
-    #[inline]
-    pub fn build_for(
-        input: proc_macro::TokenStream,
-        trait_impl: TokenStream
-    ) -> DeriveGenerator {
-        Self::build_for2(input.into(), trait_impl)
-    }
-
-    pub fn generic_support(&mut self, support: GenericSupport) -> &mut Self {
-        self.generic_support = support;
+    pub fn support(&mut self, support: Support) -> &mut Self {
+        self.support = support;
         self
     }
 
-    pub fn data_support(&mut self, support: DataSupport) -> &mut Self {
-        self.data_support = support;
+    pub fn type_bound<B: ToTokens>(&mut self, bound: B) -> &mut Self {
+        use syn::parse::Parser;
+
+        let tokens = bound.into_token_stream();
+        let p = Punctuated::<syn::TypeParamBound, Token![+]>::parse_separated_nonempty;
+        let bounds = p.parse2(tokens).expect("valid type param bounds");
+        self.type_bounds.push(bounds);
         self
     }
 
-    pub fn map_type_generic<F: 'static>(&mut self, f: F) -> &mut Self
-        where F: Fn(&DeriveGenerator, &syn::Ident, &syn::TypeParam) -> TokenStream
-    {
-        self.type_generic_mapper = Some(Box::new(f));
+    pub fn replace_generic(&mut self, trait_gen: usize, impl_gen: usize) -> &mut Self {
+        self.generic_replacements.push((trait_gen, impl_gen));
         self
     }
 
-    pub fn replace_generic(
-        &mut self,
-        use_trait_gen: usize,
-        in_place_of_type_gen: usize
-    ) -> &mut Self {
-        self.generic_replacements.push((use_trait_gen, in_place_of_type_gen));
+    pub fn validator<V: Validator + 'static>(&mut self, validator: V) -> &mut Self {
+        self.validator = Some(Box::new(validator));
         self
     }
 
-    validator!(validate_enum: Enum, enum_validator);
-    validator!(validate_struct: Struct, struct_validator);
-    validator!(validate_generics: &syn::Generics, generics_validator);
-    validator!(validate_fields: Fields, fields_validator);
-
-    pub fn function<F: 'static>(&mut self, f: F) -> &mut Self
-        where F: Fn(&DeriveGenerator, TokenStream) -> TokenStream
-    {
-        self.functions.push(Box::new(f));
-        self.push_default_mappers();
+    pub fn inner_mapper<V: Mapper + 'static>(&mut self, mapper: V) -> &mut Self {
+        self.inner_mappers.push(Box::new(mapper));
         self
     }
 
-    mappers! {
-        (map_struct, try_map_struct, struct_mapper, default_struct_mapper):
-            Struct, struct_mappers,
-
-        (map_enum, try_map_enum, enum_mapper, default_enum_mapper):
-            Enum, enum_mappers,
-
-        (map_variant, try_map_variant, variant_mapper, default_variant_mapper):
-            Variant, variant_mappers,
-
-        (map_fields, try_map_fields, fields_mapper, default_fields_mapper):
-            Fields, fields_mappers,
-
-        (map_field, try_map_field, field_mapper, default_field_mapper):
-            Field, field_mappers
+    pub fn outer_mapper<V: Mapper + 'static>(&mut self, mapper: V) -> &mut Self {
+        self.outer_mappers.push(Box::new(mapper));
+        self
     }
 
-    fn _to_tokens(&self) -> Result<TokenStream> {
-        use syn::*;
-
+    fn _to_tokens(&mut self) -> Result<TokenStream> {
         // Step 1: Run all validators.
         // Step 1a: First, check for data support.
-        let (span, support) = (self.input.span(), self.data_support);
-        match self.input.data {
-            Data::Struct(ref data) => {
-                let named = Struct::from(&self.input, data).fields().are_named();
-                if named && !support.contains(DataSupport::NamedStruct) {
+        let input = Input::from(&self.input);
+        let (span, support) = (input.span(), self.support);
+        match input {
+            Input::Struct(v) => {
+                if v.fields().are_named() && !support.contains(Support::NamedStruct) {
                     return Err(span.error("named structs are not supported"));
                 }
 
-                if !named && !support.contains(DataSupport::TupleStruct) {
+                if !v.fields().are_named() && !support.contains(Support::TupleStruct) {
                     return Err(span.error("tuple structs are not supported"));
                 }
             }
-            Data::Enum(..) if !support.contains(DataSupport::Enum) => {
+            Input::Enum(..) if !support.contains(Support::Enum) => {
                 return Err(span.error("enums are not supported"));
             }
-            Data::Union(..) if !support.contains(DataSupport::Union) => {
+            Input::Union(..) if !support.contains(Support::Union) => {
                 return Err(span.error("unions are not supported"));
             }
             _ => { /* we're okay! */ }
         }
 
         // Step 1b: Second, check for generics support.
-        for generic in &self.input.generics.params {
+        for generic in &input.generics().params {
             use syn::GenericParam::*;
 
-            let (span, support) = (generic.span(), self.generic_support);
+            let span = generic.span();
             match generic {
-                Type(..) if !support.contains(GenericSupport::Type) => {
+                Type(..) if !support.contains(Support::Type) => {
                     return Err(span.error("type generics are not supported"));
                 }
-                Lifetime(..) if !support.contains(GenericSupport::Lifetime) => {
+                Lifetime(..) if !support.contains(Support::Lifetime) => {
                     return Err(span.error("lifetime generics are not supported"));
                 }
-                Const(..) if !support.contains(GenericSupport::Const) => {
+                Const(..) if !support.contains(Support::Const) => {
                     return Err(span.error("const generics are not supported"));
                 }
                 _ => { /* we're okay! */ }
             }
         }
 
-        // Step 1c: Third, run the custom validators.
-        (self.generics_validator)(self, &self.input.generics)?;
-        match self.input.data {
-            Data::Struct(ref data) => {
-                let derived = Derived::from(&self.input, data);
-                (self.struct_validator)(self, derived)?;
-                (self.fields_validator)(self, derived.fields())?;
-            }
-            Data::Enum(ref data) => {
-                let derived = Derived::from(&self.input, data);
-                (self.enum_validator)(self, derived)?;
-                for variant in derived.variants() {
-                    (self.fields_validator)(self, variant.fields())?;
-                }
-            }
-            Data::Union(ref _data) => unimplemented!("union custom validation"),
+        // Step 1c: Third, run the custom validator, if any.
+        if let Some(validator) = &mut self.validator {
+            validator.validate_input((&self.input).into())?;
         }
 
         // Step 2: Generate the code!
         // Step 2a: Generate the code for each function.
         let mut function_code = vec![];
-        for i in 0..self.functions.len() {
-            let function = &self.functions[i];
-            let inner = match self.input.data {
-                Data::Struct(ref data) => {
-                    let derived = Derived::from(&self.input, data);
-                    self.struct_mappers[i](self, derived)?
-                }
-                Data::Enum(ref data) => {
-                    let derived = Derived::from(&self.input, data);
-                    self.enum_mappers[i](self, derived)?
-                }
-                Data::Union(ref _data) => unimplemented!("can't gen unions yet"),
-            };
+        for mapper in &mut self.inner_mappers {
+            let tokens = mapper.map_input((&self.input).into())?;
+            function_code.push(tokens);
+        }
 
-            function_code.push(function(self, inner));
+        // Step 2b: Generate the code for each item.
+        let mut item_code = vec![];
+        for mapper in &mut self.outer_mappers {
+            let tokens = mapper.map_input((&self.input).into())?;
+            item_code.push(tokens);
         }
 
         // Step 2b: Copy user's generics to mutate with bounds + replacements.
-        let mut type_generics = self.input.generics.clone();
+        let mut type_generics = self.input.generics().clone();
 
-        // Step 2c: Add an additional where bounds for each type parameter using
-        // the: `type_mapper(T) -> quote!(T: Foo)` adds `where T: Foo`.
-        if let Some(ref type_mapper) = self.type_generic_mapper {
-            for ty in self.input.generics.type_params() {
-                let new_ty = type_mapper(self, &ty.ident, ty);
-                let clause = syn::parse2(new_ty).expect("invalid type generic mapping");
-                type_generics.make_where_clause().predicates.push(clause);
-            }
+        // Step 2c: Add the requested type bounds.
+        for bounds in &self.type_bounds {
+            type_generics.add_type_bounds(bounds);
         }
 
         // Step 2d: Perform generic replacememnt: replace generics in the input
@@ -324,7 +191,7 @@ impl DeriveGenerator {
         //   * type: GenFooAB<'x, 'y: 'x>
         //   * new type: GenFooAB<'_b, 'y: 'b>
         for (trait_i, type_i) in &self.generic_replacements {
-            let idents = self.trait_impl.generics.params.iter()
+            let idents = self.item.generics.params.iter()
                 .nth(*trait_i)
                 .and_then(|trait_gen| type_generics.params.iter()
                     .filter(|gen| gen.kind() == trait_gen.kind())
@@ -332,15 +199,14 @@ impl DeriveGenerator {
                     .map(|type_gen| (trait_gen.ident(), type_gen.ident().clone())));
 
             if let Some((with, ref to_replace)) = idents {
-                let mut replacer = IdentReplacer { to_replace, with, replaced: false };
-                replacer.visit_generics_mut(&mut type_generics);
+                type_generics.replace(to_replace, with);
             }
         }
 
         // Step 2e: Determine which generics from the type need to be added to
         // the trait's `impl<>` generics. These are all of the generics in the
         // type that aren't in the trait's `impl<>` already.
-        let mut type_generics_for_impl = self.trait_impl.generics.clone();
+        let mut type_generics_for_impl = self.item.generics.clone();
         for type_gen in &type_generics.params {
             let type_gen_in_trait_gens = type_generics_for_impl.params.iter()
                 .map(|gen| gen.ident())
@@ -357,12 +223,16 @@ impl DeriveGenerator {
         let (_, ty_gen, where_gen) = type_generics.split_for_impl();
 
         // Step 2g: Generate the complete implementation.
-        let target = &self.input.ident;
-        let trait_name = &self.trait_path;
+        let (target, trait_path) = (&self.input.ident(), &self.item.path);
         Ok(quote! {
-            impl #impl_gen #trait_name for #target #ty_gen #where_gen {
-                #(#function_code)*
-            }
+            #[allow(non_snake_case)]
+            const _: () = {
+                #(#item_code)*
+
+                impl #impl_gen #trait_path for #target #ty_gen #where_gen {
+                    #(#function_code)*
+                }
+            };
         })
     }
 
@@ -375,23 +245,17 @@ impl DeriveGenerator {
         self
     }
 
-    pub fn to_tokens(&mut self) -> proc_macro::TokenStream {
-        self.to_tokens2().into()
+    pub fn to_tokens<T: From<TokenStream>>(&mut self) -> T {
+        self.try_to_tokens()
+            .unwrap_or_else(|diag| diag.emit_as_item_tokens())
+            .into()
     }
 
-    pub fn try_to_tokens(&mut self) -> Result<proc_macro::TokenStream> {
-        self.try_to_tokens2().map(|t| t.into())
-    }
-
-    pub fn to_tokens2(&mut self) -> TokenStream {
-        self.try_to_tokens2().unwrap_or_else(|diag| diag.emit_as_item_tokens())
-    }
-
-    pub fn try_to_tokens2(&mut self) -> Result<TokenStream> {
+    pub fn try_to_tokens<T: From<TokenStream>>(&mut self) -> Result<T> {
         // FIXME: Emit something like: Trait: msg.
         self._to_tokens()
             .map_err(|diag| {
-                if let Some(last) = self.trait_path.segments.last() {
+                if let Some(last) = self.item.path.segments.last() {
                     use proc_macro2::Span;
                     use proc_macro2_diagnostics::Level::*;
 
@@ -409,5 +273,6 @@ impl DeriveGenerator {
                     diag
                 }
             })
+            .map(|t| t.into())
     }
 }

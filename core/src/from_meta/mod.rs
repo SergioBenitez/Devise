@@ -6,7 +6,7 @@ use proc_macro2::Span;
 
 use generator::Result;
 
-pub use self::meta_item::{MetaItem, MetaItemList};
+pub use self::meta_item::MetaItem;
 
 // Spans of k/v pair, key, then value.
 #[derive(Copy, Clone)]
@@ -17,41 +17,52 @@ pub struct SpanWrapped<T> {
 }
 
 pub trait FromMeta: Sized {
-    fn from_meta(meta: MetaItem) -> Result<Self>;
+    fn from_meta(meta: &MetaItem) -> Result<Self>;
 
-    fn from_attr(name: &str, attr: &syn::Attribute) -> Result<Self> {
-        let meta = attr.parse_meta().map_err(|_| {
-            attr.span()
-                .error("malformed attribute")
-                .help(format!("expected syntax: #[{}(key = value, ..)]", name))
-        })?;
-
-        if let syn::Meta::List(list) = meta {
-            let list = MetaItemList { path: &list.path, iter: &list.nested };
-            Self::from_meta(MetaItem::List(list))
-        } else {
-            Err(meta.span()
-                    .error("malformed attribute: expected list")
-                    .help(format!("expected syntax: #[{}(key = value, ..)]", name)))
-        }
+    fn from_attr(attr: &syn::Attribute) -> Result<Self> {
+        let (path, inner_tokens) = (&attr.path, &attr.tokens);
+        let tokens = quote!(#path #inner_tokens);
+        Self::from_meta(&syn::parse2(tokens)?)
     }
 
-    fn from_attrs(name: &str, attrs: &[syn::Attribute]) -> Option<Result<Self>> {
+    fn from_attrs(
+        name: &str,
+        attrs: &[syn::Attribute]
+    ) -> Result<Vec<Self>> {
         let tokens = name.parse()
             .expect(&format!("`{}` contained invalid tokens", name));
 
         let path = syn::parse(tokens)
             .expect(&format!("`{}` was not a valid path", name));
 
-        let mut matches = attrs.iter().filter(|attr| attr.path == path);
-        let attr = matches.next()?;
+        let items = attrs.iter()
+            .filter(|attr| attr.path == path)
+            .map(|attr| Self::from_attr(attr))
+            .collect::<Result<Vec<_>>>()?;
 
-        if let Some(extra) = matches.next() {
-            let msg = format!("duplicate invocation of `{}` attribute", name);
-            return Some(Err(extra.path.span().error(msg)));
+        if items.is_empty() {
+            if let Some(default) = Self::default() {
+                return Ok(vec![default]);
+            }
         }
 
-        Some(Self::from_attr(name, attr))
+        Ok(items)
+    }
+
+    fn one_from_attrs(name: &str, attrs: &[syn::Attribute]) -> Result<Option<Self>> {
+        let tokens = name.parse()
+            .expect(&format!("`{}` contained invalid tokens", name));
+
+        let path = syn::parse(tokens)
+            .expect(&format!("`{}` was not a valid path", name));
+
+        let mut raw_attrs = attrs.iter().filter(|attr| attr.path == path);
+        if let Some(attr) = raw_attrs.nth(1) {
+            let msg = format!("duplicate invocation of `{}` attribute", name);
+            return Err(attr.span().error(msg));
+        }
+
+        Ok(Self::from_attrs(name, attrs)?.pop())
     }
 
     fn default() -> Option<Self> {
@@ -60,7 +71,7 @@ pub trait FromMeta: Sized {
 }
 
 impl FromMeta for isize {
-    fn from_meta(meta: MetaItem) -> Result<Self> {
+    fn from_meta(meta: &MetaItem) -> Result<Self> {
         if let Int(i) = meta.lit()? {
             if let Ok(v) = i.base10_parse::<isize>() {
                 return Ok(v);
@@ -74,7 +85,7 @@ impl FromMeta for isize {
 }
 
 impl FromMeta for usize {
-    fn from_meta(meta: MetaItem) -> Result<Self> {
+    fn from_meta(meta: &MetaItem) -> Result<Self> {
         if let Int(i) = meta.lit()? {
             if let Ok(v) = i.base10_parse::<usize>() {
                 return Ok(v);
@@ -88,7 +99,7 @@ impl FromMeta for usize {
 }
 
 impl FromMeta for String {
-    fn from_meta(meta: MetaItem) -> Result<Self> {
+    fn from_meta(meta: &MetaItem) -> Result<Self> {
         if let Str(s) = meta.lit()? {
             return Ok(s.value());
         }
@@ -98,7 +109,7 @@ impl FromMeta for String {
 }
 
 impl FromMeta for bool {
-    fn from_meta(meta: MetaItem) -> Result<Self> {
+    fn from_meta(meta: &MetaItem) -> Result<Self> {
         if let MetaItem::Path(_) = meta {
             return Ok(true);
         }
@@ -111,8 +122,14 @@ impl FromMeta for bool {
     }
 }
 
+impl FromMeta for syn::Expr {
+    fn from_meta(meta: &MetaItem) -> Result<Self> {
+        meta.expr().map(|v| v.clone())
+    }
+}
+
 impl<T: FromMeta> FromMeta for Option<T> {
-    fn from_meta(meta: MetaItem) -> Result<Self> {
+    fn from_meta(meta: &MetaItem) -> Result<Self> {
         T::from_meta(meta).map(Some)
     }
 
@@ -122,7 +139,7 @@ impl<T: FromMeta> FromMeta for Option<T> {
 }
 
 impl<T: FromMeta> FromMeta for SpanWrapped<T> {
-    fn from_meta(meta: MetaItem) -> Result<Self> {
+    fn from_meta(meta: &MetaItem) -> Result<Self> {
         let span = meta.value_span();
         let full_span = meta.span();
         T::from_meta(meta).map(|value| SpanWrapped { full_span, span, value })

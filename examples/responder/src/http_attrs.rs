@@ -8,7 +8,7 @@ pub struct ContentType(String, String);
 pub struct Status(u16);
 
 impl FromMeta for Status {
-    fn from_meta(meta: MetaItem) -> Result<Self> {
+    fn from_meta(meta: &MetaItem) -> Result<Self> {
         let num = usize::from_meta(meta)?;
         if num < 100 || num >= 600 {
             return Err(meta.value_span().error("status must be in range [100, 600)"));
@@ -26,7 +26,7 @@ impl ToTokens for Status {
 }
 
 impl FromMeta for ContentType {
-    fn from_meta(meta: MetaItem) -> Result<Self> {
+    fn from_meta(meta: &MetaItem) -> Result<Self> {
         let string = String::from_meta(meta)?;
         let splits = string.split('/').collect::<Vec<_>>();
         if splits.len() != 2 {

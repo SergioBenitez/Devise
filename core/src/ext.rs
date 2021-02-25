@@ -1,6 +1,7 @@
 pub use proc_macro2_diagnostics::SpanDiagnosticExt;
 
-use syn::{*, punctuated::Punctuated, token::Comma};
+use syn::{*, spanned::Spanned, punctuated::Punctuated, token::Comma};
+use proc_macro2::{Span, TokenStream};
 
 pub trait PathExt {
     fn is(&self, global: bool, segments: &[&str]) -> bool;
@@ -13,10 +14,90 @@ pub trait PathExt {
 pub trait TypeExt {
     fn strip_lifetimes(&mut self);
     fn with_stripped_lifetimes(&self) -> Type;
+    fn replace_lifetimes(&mut self, with: Lifetime);
+    fn with_replaced_lifetimes(&self, with: Lifetime) -> Type;
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum GenericKind { Lifetime, Type, Binding, Const, Constraint }
+pub trait GenericsExt {
+    fn add_type_bound(&mut self, bounds: &TypeParamBound);
+    fn add_type_bounds(&mut self, bounds: &Punctuated<TypeParamBound, Token![+]>);
+    fn replace(&mut self, ident: &Ident, with: &Ident);
+    fn replace_lifetime(&mut self, n: usize, with: &Lifetime) -> bool;
+    fn insert_lifetime(&mut self, lifetime: LifetimeDef);
+}
+
+pub trait AstItemExt {
+    fn respanned(&self, span: proc_macro2::Span) -> Self where Self: parse::Parse;
+    fn respanned_tokens(&self, span: proc_macro2::Span) -> TokenStream;
+}
+
+#[macro_export]
+macro_rules! quote_respanned {
+    ($span:expr => $($t:tt)*) => ({
+        use $crate::ext::AstItemExt;
+        let tokens = quote_spanned!($span => $($t)*);
+        tokens.respanned_tokens($span)
+    })
+}
+
+pub use quote_respanned;
+
+impl<T: quote::ToTokens> AstItemExt for T {
+    fn respanned(&self, span: Span) -> T
+        where Self: parse::Parse
+    {
+        syn::parse2(self.respanned_tokens(span)).unwrap()
+    }
+
+    fn respanned_tokens(&self, span: Span) -> TokenStream {
+        self.to_token_stream()
+            .into_iter()
+            .map(|mut token| { token.set_span(span); token })
+            .collect()
+    }
+}
+
+impl GenericsExt for Generics {
+    fn add_type_bound(&mut self, bound: &TypeParamBound) {
+        let mut list = Punctuated::new();
+        list.push(bound.clone());
+        self.add_type_bounds(&list);
+    }
+
+    fn add_type_bounds(&mut self, bounds: &Punctuated<TypeParamBound, Token![+]>) {
+        let bounds = self.type_params()
+            .map(|ty| {
+                let ident = &ty.ident;
+                let bounds = bounds.respanned_tokens(ty.span());
+                syn::parse2(quote_spanned!(ty.span() => #ident: #bounds))
+            })
+            .collect::<Result<Vec<_>>>()
+            .expect("valid where bound");
+
+        for bound in bounds {
+            self.make_where_clause().predicates.push(bound);
+        }
+    }
+
+    fn replace(&mut self, ident: &Ident, with: &Ident) {
+        IdentReplacer::new(ident, with).visit_generics_mut(self);
+    }
+
+    fn replace_lifetime(&mut self, n: usize, with: &Lifetime) -> bool {
+        let lifetime_ident = self.lifetimes().nth(n)
+            .map(|l| l.lifetime.ident.clone());
+
+        if let Some(ref ident) = lifetime_ident {
+            self.replace(ident, &with.ident);
+        }
+
+        lifetime_ident.is_some()
+    }
+
+    fn insert_lifetime(&mut self, lifetime: LifetimeDef) {
+        self.params.insert(0, lifetime.into());
+    }
+}
 
 pub trait GenericExt {
     fn kind(&self) -> GenericKind;
@@ -33,6 +114,17 @@ pub trait Split2<A, B>: Sized + Iterator {
 pub trait Split3<A, B, C>: Sized + Iterator {
     fn split3(self) -> (Vec<A>, Vec<B>, Vec<C>);
 }
+
+pub trait Split4<A, B, C, D>: Sized + Iterator {
+    fn split4(self) -> (Vec<A>, Vec<B>, Vec<C>, Vec<D>);
+}
+
+pub trait Split6<A, B, C, D, E, F>: Sized + Iterator {
+    fn split6(self) -> (Vec<A>, Vec<B>, Vec<C>, Vec<D>, Vec<E>, Vec<F>);
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum GenericKind { Lifetime, Type, Binding, Const, Constraint }
 
 impl PathExt for Path {
     fn is(&self, global: bool, segments: &[&str]) -> bool {
@@ -96,9 +188,41 @@ impl<A, B, C, I: IntoIterator<Item = (A, B, C)> + Iterator> Split3<A, B, C> for 
     }
 }
 
+impl<A, B, C, D, I: IntoIterator<Item = (A, B, C, D)> + Iterator> Split4<A, B, C, D> for I {
+    fn split4(self) -> (Vec<A>, Vec<B>, Vec<C>, Vec<D>) {
+        let (mut first, mut second, mut third, mut fourth) = (vec![], vec![], vec![], vec![]);
+        self.into_iter().for_each(|(a, b, c, d)| {
+            first.push(a);
+            second.push(b);
+            third.push(c);
+            fourth.push(d);
+        });
+
+        (first, second, third, fourth)
+    }
+}
+
+impl<A, B, C, D, E, F, I: IntoIterator<Item = (A, B, C, D, E, F)> + Iterator> Split6<A, B, C, D, E, F> for I {
+    fn split6(self) -> (Vec<A>, Vec<B>, Vec<C>, Vec<D>, Vec<E>, Vec<F>) {
+        let (mut v1, mut v2, mut v3, mut v4, mut v5, mut v6)
+            = (vec![], vec![], vec![], vec![], vec![], vec![]);
+
+        self.into_iter().for_each(|(a, b, c, d, e, f)| {
+            v1.push(a); v2.push(b); v3.push(c); v4.push(d); v5.push(e); v6.push(f);
+        });
+
+        (v1, v2, v3, v4, v5, v6)
+    }
+}
+
 impl TypeExt for Type {
+    fn replace_lifetimes(&mut self, with: Lifetime) {
+        let mut r = LifetimeReplacer { with };
+        r.visit_type_mut(self);
+    }
+
     fn strip_lifetimes(&mut self) {
-        strip(self);
+        self.replace_lifetimes(syn::parse_quote!('_));
     }
 
     fn with_stripped_lifetimes(&self) -> Type {
@@ -106,95 +230,24 @@ impl TypeExt for Type {
         new.strip_lifetimes();
         new
     }
-}
 
-fn make_wild(lifetime: &mut Lifetime) {
-    lifetime.ident = Ident::new("_", lifetime.ident.span());
-}
-
-fn strip(ty: &mut Type) {
-    match *ty {
-        Type::Reference(ref mut inner) => {
-            inner.lifetime.as_mut().map(make_wild);
-            strip(&mut inner.elem);
-        }
-        Type::Slice(ref mut inner) => strip(&mut inner.elem),
-        Type::Array(ref mut inner) => strip(&mut inner.elem),
-        Type::Ptr(ref mut inner) => strip(&mut inner.elem),
-        Type::Paren(ref mut inner) => strip(&mut inner.elem),
-        Type::Group(ref mut inner) => strip(&mut inner.elem),
-        Type::BareFn(ref mut inner) => {
-            inner.lifetimes.as_mut().map(strip_bound_lifetimes);
-            if let ReturnType::Type(_, ref mut ty) = inner.output {
-                strip(ty);
-            }
-
-            inner.inputs.iter_mut().for_each(|input| strip(&mut input.ty));
-        }
-        Type::Tuple(ref mut inner) => {
-            inner.elems.iter_mut().for_each(strip);
-        }
-        Type::Path(ref mut inner) => {
-            if let Some(ref mut qself) = inner.qself {
-                strip(&mut qself.ty);
-            }
-
-            strip_path(&mut inner.path);
-        }
-        Type::ImplTrait(ref mut inner) => strip_bounds(&mut inner.bounds),
-        Type::TraitObject(ref mut inner) => strip_bounds(&mut inner.bounds),
-        Type::Infer(_) | Type::Macro(_) | Type::Verbatim(_) | Type::Never(_) => {  }
-        _ => { unimplemented!("unknown type") }
+    fn with_replaced_lifetimes(&self, with: Lifetime) -> Type {
+        let mut new = self.clone();
+        new.replace_lifetimes(with);
+        new
     }
 }
 
-fn strip_bound_lifetimes(bound: &mut BoundLifetimes) {
-    bound.lifetimes.iter_mut().for_each(|d| make_wild(&mut d.lifetime));
+pub struct LifetimeReplacer {
+    pub with: Lifetime,
 }
 
-fn strip_path(path: &mut Path) {
-    for segment in path.segments.iter_mut() {
-        use syn::GenericArgument::*;
-
-        match segment.arguments {
-            PathArguments::AngleBracketed(ref mut inner) => {
-                let args = inner.args.clone();
-                inner.args = args.into_pairs().filter_map(|mut pair| {
-                    match pair.value_mut() {
-                        Lifetime(ref mut l) => make_wild(l),
-                        Type(ref mut ty) => strip(ty),
-                        Binding(ref mut inner) => strip(&mut inner.ty),
-                        Constraint(ref mut inner) => strip_bounds(&mut inner.bounds),
-                        Const(..) => { /* ? */ }
-                    }
-
-                    Some(pair)
-                }).collect();
-            }
-            PathArguments::Parenthesized(ref mut args) => {
-                args.inputs.iter_mut().for_each(strip);
-                if let ReturnType::Type(_, ref mut ty) = args.output {
-                    strip(ty);
-                }
-            }
-            PathArguments::None => {  }
-        }
+impl VisitMut for LifetimeReplacer {
+    fn visit_lifetime_mut(&mut self, i: &mut Lifetime) {
+        let mut ident = self.with.ident.clone();
+        ident.set_span(i.ident.span());
+        i.ident = ident;
     }
-}
-
-fn strip_bounds(bounds: &mut Punctuated<TypeParamBound, token::Add>) {
-    let old_bounds = bounds.clone();
-    *bounds = old_bounds.into_pairs().filter_map(|mut pair| {
-        match pair.value_mut() {
-            TypeParamBound::Lifetime(ref mut l) => make_wild(l),
-            TypeParamBound::Trait(ref mut inner) => {
-                inner.lifetimes.as_mut().map(strip_bound_lifetimes);
-                strip_path(&mut inner.path);
-            }
-        }
-
-        Some(pair)
-    }).collect();
 }
 
 impl GenericExt for GenericArgument {
@@ -235,6 +288,12 @@ pub struct IdentReplacer<'a> {
     pub to_replace: &'a Ident,
     pub with: &'a Ident,
     pub replaced: bool
+}
+
+impl<'a> IdentReplacer<'a> {
+    pub fn new(to_replace: &'a Ident, with: &'a Ident) -> Self {
+        IdentReplacer { to_replace, with, replaced: false }
+    }
 }
 
 impl<'a> VisitMut for IdentReplacer<'a> {

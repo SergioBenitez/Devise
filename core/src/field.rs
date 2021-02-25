@@ -1,92 +1,60 @@
 use std::ops::Deref;
 
 use quote::ToTokens;
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::TokenStream;
 use syn::{self, Member, Index, punctuated::Punctuated, spanned::Spanned};
 
-use derived::Derived;
+use crate::derived::{Derived, Struct, Variant, Union};
+use crate::ItemInput;
 
 #[derive(Debug, Copy, Clone)]
 pub enum FieldParent<'p> {
-    Variant(Derived<'p, syn::Variant>),
-    Struct(Derived<'p, syn::DataStruct>),
-    Union(Derived<'p, syn::DataUnion>),
+    Variant(Variant<'p>),
+    Struct(Struct<'p>),
+    Union(Union<'p>),
 }
 
 impl<'p> FieldParent<'p> {
-    pub fn input(self) -> &'p syn::DeriveInput {
+    pub fn input(&self) -> &ItemInput {
         match self {
-            FieldParent::Variant(v) => v.derive_input,
-            FieldParent::Struct(s) => s.derive_input,
-            FieldParent::Union(u) => u.derive_input,
+            FieldParent::Variant(v) => v.parent.parent,
+            FieldParent::Struct(v) => v.parent,
+            FieldParent::Union(v) => v.parent,
         }
     }
 
-    pub fn fields(self) -> Fields<'p> {
-        let kind: FieldsKind = match self {
-            FieldParent::Variant(v) => (&v.value.fields).into(),
-            FieldParent::Struct(s) => (&s.value.fields).into(),
-            FieldParent::Union(u) => (&u.value.fields).into(),
-        };
-
-        let span = kind.span().unwrap_or_else(|| self.input().ident.span());
-        Fields { parent: self, kind, span }
-    }
-
-    pub fn attrs(self) -> &'p [syn::Attribute] {
+    pub fn attrs(&self) -> &[syn::Attribute] {
         match self {
-            FieldParent::Variant(v) => &v.value.attrs,
-            FieldParent::Struct(_) | FieldParent::Union(_) => &self.input().attrs,
+            FieldParent::Variant(v) => &v.attrs,
+            FieldParent::Struct(_) | FieldParent::Union(_) => self.input().attrs(),
+        }
+    }
+}
+
+impl ToTokens for FieldParent<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self {
+            FieldParent::Variant(v) => v.to_tokens(tokens),
+            FieldParent::Struct(v) => v.to_tokens(tokens),
+            FieldParent::Union(v) => v.to_tokens(tokens),
         }
     }
 }
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) enum FieldsKind<'p> {
-    Named(&'p Punctuated<syn::Field, syn::token::Comma>, Span),
-    Unnamed(&'p Punctuated<syn::Field, syn::token::Comma>, Span),
+    Named(&'p syn::FieldsNamed),
+    Unnamed(&'p syn::FieldsUnnamed),
     Unit
-}
-
-impl<'a> From<&'a syn::FieldsNamed> for FieldsKind<'a> {
-    fn from(fields: &'a syn::FieldsNamed) -> Self {
-        FieldsKind::Named(&fields.named, fields.brace_token.span)
-    }
-}
-
-impl<'a> From<&'a syn::FieldsUnnamed> for FieldsKind<'a> {
-    fn from(fields: &'a syn::FieldsUnnamed) -> Self {
-        FieldsKind::Unnamed(&fields.unnamed, fields.paren_token.span)
-    }
 }
 
 impl<'a> From<&'a syn::Fields> for FieldsKind<'a> {
     fn from(fields: &'a syn::Fields) -> Self {
         match fields {
-            syn::Fields::Named(fs) => fs.into(),
-            syn::Fields::Unnamed(fs) => fs.into(),
+            syn::Fields::Named(fs) => FieldsKind::Named(&fs),
+            syn::Fields::Unnamed(fs) => FieldsKind::Unnamed(&fs),
             syn::Fields::Unit => FieldsKind::Unit,
         }
-    }
-}
-
-impl<'p> FieldsKind<'p> {
-    fn fields(&self) -> Option<&'p Punctuated<syn::Field, syn::token::Comma>> {
-        match self {
-            FieldsKind::Named(i, _) | FieldsKind::Unnamed(i, _) => Some(i),
-            FieldsKind::Unit => None
-        }
-    }
-
-    fn span(&self) -> Option<Span> {
-        match self {
-            FieldsKind::Named(_, s) | FieldsKind::Unnamed(_, s) => Some(*s),
-            FieldsKind::Unit => None
-        }
-    }
-
-    fn iter(self) -> impl Iterator<Item = &'p syn::Field> {
-        self.fields().into_iter().flat_map(|fields| fields.iter())
     }
 }
 
@@ -94,17 +62,43 @@ impl<'p> FieldsKind<'p> {
 pub struct Fields<'p> {
     pub parent: FieldParent<'p>,
     pub(crate) kind: FieldsKind<'p>,
-    pub span: Span,
+}
+
+impl<'p> From<Variant<'p>> for Fields<'p> {
+    fn from(v: Variant<'p>) -> Self {
+        Fields { parent: FieldParent::Variant(v), kind: (&v.inner.fields).into() }
+    }
+}
+
+impl<'p> From<Struct<'p>> for Fields<'p> {
+    fn from(v: Struct<'p>) -> Self {
+        Fields { parent: FieldParent::Struct(v), kind: (&v.inner.fields).into() }
+    }
+}
+
+impl<'p> From<Union<'p>> for Fields<'p> {
+    fn from(v: Union<'p>) -> Self {
+        Fields { parent: FieldParent::Union(v), kind: FieldsKind::Named(&v.inner.fields) }
+    }
 }
 
 impl<'f> Fields<'f> {
+    fn fields(&self) -> Option<&'f Punctuated<syn::Field, syn::token::Comma>> {
+        match self.kind {
+            FieldsKind::Named(i) => Some(&i.named),
+            FieldsKind::Unnamed(i) => Some(&i.unnamed),
+            FieldsKind::Unit => None
+        }
+    }
+
     pub fn iter(self) -> impl Iterator<Item = Field<'f>> {
-        self.kind.iter()
+        self.fields()
+            .into_iter()
+            .flat_map(|fields| fields.iter())
             .enumerate()
             .map(move |(index, field)| Field {
                 index,
-                parent: self.parent,
-                field: Derived::from(self.parent.input(), field),
+                field: Derived::from(field, self.parent),
             })
     }
 
@@ -113,11 +107,7 @@ impl<'f> Fields<'f> {
     }
 
     pub fn count(self) -> usize {
-        match self.kind {
-            FieldsKind::Named(fields, ..) => fields.len(),
-            FieldsKind::Unnamed(fields, ..) => fields.len(),
-            FieldsKind::Unit => 0
-        }
+        self.fields().map(|f| f.len()).unwrap_or(0)
     }
 
     pub fn are_named(self) -> bool {
@@ -143,8 +133,8 @@ impl<'f> Fields<'f> {
 
     fn surround(self, tokens: TokenStream) -> TokenStream {
         match self.kind {
-            FieldsKind::Named(..) => quote_spanned!(self.span => { #tokens }),
-            FieldsKind::Unnamed(..) => quote_spanned!(self.span => ( #tokens )),
+            FieldsKind::Named(..) => quote_spanned!(self.span() => { #tokens }),
+            FieldsKind::Unnamed(..) => quote_spanned!(self.span() => ( #tokens )),
             FieldsKind::Unit => quote!()
         }
     }
@@ -174,17 +164,17 @@ impl<'f> Fields<'f> {
 
 impl<'a> ToTokens for Fields<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        match self.kind.fields() {
-            Some(fields) => fields.to_tokens(tokens),
-            None => tokens.extend(quote_spanned!(self.span => (A,)))
+        match self.kind {
+            FieldsKind::Named(v) => v.to_tokens(tokens),
+            FieldsKind::Unnamed(v) => v.to_tokens(tokens),
+            FieldsKind::Unit => tokens.extend(quote_spanned!(self.parent.span() => ()))
         }
     }
 }
 
 #[derive(Debug, Copy, Clone)]
 pub struct Field<'f> {
-    pub parent: FieldParent<'f>,
-    pub field: Derived<'f, syn::Field>,
+    pub field: Derived<'f, syn::Field, FieldParent<'f>>,
     pub index: usize,
 }
 
@@ -215,7 +205,7 @@ impl<'f> Field<'f> {
 }
 
 impl<'f> Deref for Field<'f> {
-    type Target = Derived<'f, syn::Field>;
+    type Target = Derived<'f, syn::Field, FieldParent<'f>>;
 
     fn deref(&self) -> &Self::Target {
         &self.field
