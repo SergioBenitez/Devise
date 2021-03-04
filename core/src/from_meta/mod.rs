@@ -12,6 +12,7 @@ pub use self::meta_item::MetaItem;
 #[derive(Copy, Clone)]
 pub struct SpanWrapped<T> {
     pub span: Span,
+    pub key_span: Option<Span>,
     pub full_span: Span,
     pub value: T,
 }
@@ -141,8 +142,9 @@ impl<T: FromMeta> FromMeta for Option<T> {
 impl<T: FromMeta> FromMeta for SpanWrapped<T> {
     fn from_meta(meta: &MetaItem) -> Result<Self> {
         let span = meta.value_span();
+        let key_span = meta.attr_path().map(|i| i.span());
         let full_span = meta.span();
-        T::from_meta(meta).map(|value| SpanWrapped { full_span, span, value })
+        T::from_meta(meta).map(|value| SpanWrapped { full_span, key_span, span, value })
     }
 }
 
@@ -152,13 +154,19 @@ impl<T: ::quote::ToTokens> ::quote::ToTokens for SpanWrapped<T> {
     }
 }
 
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 impl<T> Deref for SpanWrapped<T> {
     type Target = T;
 
     fn deref(&self) -> &T {
         &self.value
+    }
+}
+
+impl<T> DerefMut for SpanWrapped<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.value
     }
 }
 
