@@ -91,7 +91,7 @@ impl<'f> Fields<'f> {
         }
     }
 
-    pub fn iter(self) -> impl Iterator<Item = Field<'f>> {
+    pub fn iter(self) -> impl Iterator<Item = Field<'f>> + Clone {
         self.fields()
             .into_iter()
             .flat_map(|fields| fields.iter())

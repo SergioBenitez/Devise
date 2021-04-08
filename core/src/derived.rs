@@ -192,7 +192,7 @@ impl<'f> Variant<'f> {
 }
 
 impl<'p> Enum<'p> {
-    pub fn variants(self) -> impl Iterator<Item = Variant<'p>> {
+    pub fn variants(self) -> impl Iterator<Item = Variant<'p>> + Clone {
         self.inner.variants.iter()
             .map(move |v| Derived::from(v, self))
     }

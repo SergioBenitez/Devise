@@ -135,7 +135,7 @@ impl MetaItem {
         }
     }
 
-    pub fn list(&self) -> Result<impl Iterator<Item = &MetaItem>> {
+    pub fn list(&self) -> Result<impl Iterator<Item = &MetaItem> + Clone> {
         match self {
             MetaItem::List { items, .. } => Ok(items.iter()),
             _ => {
