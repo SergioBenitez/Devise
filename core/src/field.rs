@@ -211,3 +211,9 @@ impl<'f> Deref for Field<'f> {
         &self.field
     }
 }
+
+impl<'f> ToTokens for Field<'f> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        self.field.to_tokens(tokens)
+    }
+}
