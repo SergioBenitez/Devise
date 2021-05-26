@@ -1,24 +1,41 @@
-use quote::ToTokens;
-use proc_macro2::{Span, TokenStream};
+use quote::{ToTokens, TokenStreamExt};
+use proc_macro2::{Span, TokenStream, TokenTree};
 use proc_macro2_diagnostics::{Diagnostic, SpanDiagnosticExt};
-use syn::{self, punctuated::Punctuated, spanned::Spanned};
+use syn::{self, punctuated::Punctuated, spanned::Spanned, parse::{Parse, Parser}};
 
 use generator::Result;
 
 #[derive(Debug, Clone)]
 pub enum MetaItem {
     Path(syn::Path),
-    Expr(syn::Expr),
+    Tokens(TokenStream),
     KeyValue {
         path: syn::Path,
         eq: syn::Token![=],
-        expr: syn::Expr,
+        tokens: TokenStream,
     },
     List {
         path: syn::Path,
         paren: syn::token::Paren,
         items: Punctuated<MetaItem, syn::token::Comma>
     }
+}
+
+fn parse_delimited_tokens(input: syn::parse::ParseStream) -> syn::Result<TokenStream> {
+    input.step(|cursor| {
+        let mut stream = TokenStream::new();
+        let mut rest = *cursor;
+        while let Some((tt, next)) = rest.token_tree() {
+            if matches!(&tt, TokenTree::Punct(p) if p.as_char() == ',') {
+                return Ok((stream, rest));
+            }
+
+            rest = next;
+            stream.append(tt);
+        }
+
+        Ok((stream, rest))
+    })
 }
 
 impl syn::parse::Parse for MetaItem {
@@ -35,13 +52,13 @@ impl syn::parse::Parse for MetaItem {
                 MetaItem::KeyValue {
                     path,
                     eq: input.parse()?,
-                    expr: input.parse()?,
+                    tokens: parse_delimited_tokens(input)?,
                 }
             } else {
                 MetaItem::Path(path)
             }
         } else {
-            MetaItem::Expr(input.parse()?)
+            MetaItem::Tokens(parse_delimited_tokens(input)?)
         };
 
         Ok(item)
@@ -65,22 +82,27 @@ impl MetaItem {
         path.segments.last().map(|l| &l.ident)
     }
 
-    pub fn description(&self) -> &'static str {
+    pub fn tokens(&self) -> Option<&TokenStream> {
         match self {
-            MetaItem::Path(..) => "path",
-            MetaItem::Expr(syn::Expr::Lit(e)) => match e.lit {
-                syn::Lit::Str(..) => "string literal",
-                syn::Lit::ByteStr(..) => "byte string literal",
-                syn::Lit::Byte(..) => "byte literal",
-                syn::Lit::Char(..) => "character literal",
-                syn::Lit::Int(..) => "integer literal",
-                syn::Lit::Float(..) => "float literal",
-                syn::Lit::Bool(..) => "boolean literal",
-                syn::Lit::Verbatim(..) => "literal",
+            MetaItem::Tokens(tokens) | MetaItem::KeyValue { tokens, .. } => Some(tokens),
+            _ => None
+        }
+    }
+
+    pub fn parse_value<T: Parse>(&self, expected: &str) -> Result<T> {
+        let tokens = self.tokens().ok_or_else(|| self.expected(expected))?;
+        syn::parse2(tokens.clone())
+            .map_err(|e| e.span().error(format!("failed to parse {}: {}", expected, e)))
+    }
+
+    pub fn parse_value_with<P: Parser>(&self, parser: P, expected: &str) -> Result<P::Output> {
+        match self {
+            MetaItem::Tokens(tokens) | MetaItem::KeyValue { tokens, .. } => {
+                parser.parse2(tokens.clone()).map_err(|e| {
+                    e.span().error(format!("failed to parse {}: {}", expected, e))
+                })
             },
-            MetaItem::Expr(..) => "expression",
-            MetaItem::KeyValue { .. } => "key/value pair",
-            MetaItem::List { .. } => "list",
+            _ => Err(self.expected(expected))
         }
     }
 
@@ -96,43 +118,59 @@ impl MetaItem {
         self.span().error(msg)
     }
 
+    pub fn description(&self) -> &'static str {
+        let expr = self.tokens().and_then(|t| syn::parse2::<syn::Expr>(t.clone()).ok());
+        if let Some(syn::Expr::Lit(e)) = expr {
+            match e.lit {
+                syn::Lit::Str(..) => "string literal",
+                syn::Lit::ByteStr(..) => "byte string literal",
+                syn::Lit::Byte(..) => "byte literal",
+                syn::Lit::Char(..) => "character literal",
+                syn::Lit::Int(..) => "integer literal",
+                syn::Lit::Float(..) => "float literal",
+                syn::Lit::Bool(..) => "boolean literal",
+                syn::Lit::Verbatim(..) => "literal",
+            }
+        } else if expr.is_some() {
+            "non-literal expression"
+        } else {
+            match self {
+                MetaItem::Tokens(..) => "tokens",
+                MetaItem::KeyValue { .. } => "key/value pair",
+                MetaItem::List { .. } => "list",
+                MetaItem::Path(_) => "path",
+            }
+        }
+    }
+
     pub fn is_bare(&self) -> bool {
         match self {
-            MetaItem::Path(..) | MetaItem::Expr(..) => true,
+            MetaItem::Path(..) | MetaItem::Tokens(..) => true,
             MetaItem::KeyValue { .. } | MetaItem::List { .. } => false,
         }
     }
 
-    pub fn expr(&self) -> Result<&syn::Expr> {
+    pub fn expr(&self) -> Result<syn::Expr> {
+        self.parse_value("expression")
+    }
+
+    pub fn path(&self) -> Result<syn::Path> {
         match self {
-            MetaItem::Expr(e) => Ok(e),
-            MetaItem::KeyValue { expr: e, .. } => Ok(e),
-            _ => Err(self.expected("expression")),
+            MetaItem::Path(p) => Ok(p.clone()),
+            _ => self.parse_value("path")
         }
     }
 
-    pub fn path(&self) -> Result<&syn::Path> {
-        match self {
-            MetaItem::Path(p) => Ok(p),
-            MetaItem::KeyValue { expr: syn::Expr::Path(e), .. } => Ok(&e.path),
-            _ => Err(self.expected("path")),
-        }
-    }
-
-    pub fn lit(&self) -> Result<&syn::Lit> {
-        fn from_expr<'a>(meta: &MetaItem, expr: &'a syn::Expr) -> Result<&'a syn::Lit> {
+    pub fn lit(&self) -> Result<syn::Lit> {
+        fn from_expr(meta: &MetaItem, expr: syn::Expr) -> Result<syn::Lit> {
             match expr {
-                syn::Expr::Lit(e) => Ok(&e.lit),
-                syn::Expr::Group(g) => from_expr(meta, &g.expr),
+                syn::Expr::Lit(e) => Ok(e.lit),
+                syn::Expr::Group(g) => from_expr(meta, *g.expr),
                 _ => Err(meta.expected("literal")),
             }
         }
 
-        match self {
-            MetaItem::Expr(e) => from_expr(self, &e),
-            MetaItem::KeyValue { expr: syn::Expr::Lit(e), .. } => Ok(&e.lit),
-            _ => Err(self.expected("literal")),
-        }
+        self.parse_value("literal").and_then(|e| from_expr(self, e))
     }
 
     pub fn list(&self) -> Result<impl Iterator<Item = &MetaItem> + Clone> {
@@ -147,25 +185,25 @@ impl MetaItem {
 
     pub fn value_span(&self) -> Span {
         match self {
-            MetaItem::KeyValue { expr, .. } => expr.span(),
+            MetaItem::KeyValue { tokens, .. } => tokens.span(),
             _ => self.span(),
         }
     }
 }
 
 impl ToTokens for MetaItem {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
+    fn to_tokens(&self, stream: &mut TokenStream) {
         match self {
-            MetaItem::Path(p) => p.to_tokens(tokens),
-            MetaItem::Expr(e) => e.to_tokens(tokens),
-            MetaItem::KeyValue { path, eq, expr } => {
-                path.to_tokens(tokens);
-                eq.to_tokens(tokens);
-                expr.to_tokens(tokens);
+            MetaItem::Path(p) => p.to_tokens(stream),
+            MetaItem::Tokens(tokens) => stream.append_all(tokens.clone()),
+            MetaItem::KeyValue { path, eq, tokens } => {
+                path.to_tokens(stream);
+                eq.to_tokens(stream);
+                stream.append_all(tokens.clone());
             }
             MetaItem::List { path, paren, items } => {
-                path.to_tokens(tokens);
-                paren.surround(tokens, |t| items.to_tokens(t));
+                path.to_tokens(stream);
+                paren.surround(stream, |t| items.to_tokens(t));
             }
         }
     }

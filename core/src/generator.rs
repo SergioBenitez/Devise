@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use proc_macro2::TokenStream;
-use syn::{self, Token, punctuated::Punctuated, spanned::Spanned};
+use syn::{self, Token, punctuated::Punctuated, spanned::Spanned, parse::Parser};
 use proc_macro2_diagnostics::{SpanDiagnosticExt, Diagnostic};
 use quote::ToTokens;
 
@@ -51,7 +51,7 @@ pub struct DeriveGenerator {
     pub validator: Option<Box<dyn Validator>>,
     pub inner_mappers: Vec<Box<dyn Mapper>>,
     pub outer_mappers: Vec<Box<dyn Mapper>>,
-    pub type_bounds: Vec<Punctuated<syn::TypeParamBound, Token![+]>>,
+    pub type_bound_mapper: Option<Box<dyn Mapper>>,
     generic_replacements: Vec<(usize, usize)>,
 }
 
@@ -69,7 +69,7 @@ impl DeriveGenerator {
             support: Support::default(),
             generic_replacements: vec![],
             validator: None,
-            type_bounds: vec![],
+            type_bound_mapper: None,
             inner_mappers: vec![],
             outer_mappers: vec![],
         }
@@ -81,15 +81,18 @@ impl DeriveGenerator {
     }
 
     pub fn type_bound<B: ToTokens>(&mut self, bound: B) -> &mut Self {
-        use syn::parse::Parser;
-
-        let tokens = bound.into_token_stream();
-        let p = Punctuated::<syn::TypeParamBound, Token![+]>::parse_separated_nonempty;
-        let bounds = p.parse2(tokens).expect("valid type param bounds");
-        self.type_bounds.push(bounds);
-        self
+        let tokens = bound.to_token_stream();
+        self.type_bound_mapper(crate::MapperBuild::new()
+            .try_input_map(move |_, input| {
+                let tokens = tokens.clone();
+                let bounds = input.generics().parsed_bounded_types(tokens)?;
+                Ok(bounds.into_token_stream())
+            }))
     }
 
+    /// Take the 0-indexed `trait_gen`th generic in the generics in impl<..>
+    /// being built and substitute those tokens in place of the 0-indexed
+    /// `impl_gen`th generic of the same kind in the input type.
     pub fn replace_generic(&mut self, trait_gen: usize, impl_gen: usize) -> &mut Self {
         self.generic_replacements.push((trait_gen, impl_gen));
         self
@@ -97,6 +100,11 @@ impl DeriveGenerator {
 
     pub fn validator<V: Validator + 'static>(&mut self, validator: V) -> &mut Self {
         self.validator = Some(Box::new(validator));
+        self
+    }
+
+    pub fn type_bound_mapper<V: Mapper + 'static>(&mut self, mapper: V) -> &mut Self {
+        self.type_bound_mapper = Some(Box::new(mapper));
         self
     }
 
@@ -177,8 +185,13 @@ impl DeriveGenerator {
         let mut type_generics = self.input.generics().clone();
 
         // Step 2c: Add the requested type bounds.
-        for bounds in &self.type_bounds {
-            type_generics.add_type_bounds(bounds);
+        if let Some(ref mut mapper) = self.type_bound_mapper {
+            let tokens = mapper.map_input((&self.input).into())?;
+            let bounds = Punctuated::<syn::WherePredicate, Token![,]>::parse_terminated
+                .parse2(tokens)
+                .map_err(|e| e.span().error(format!("invalid type bounds: {}", e)))?;
+
+            type_generics.add_where_predicates(bounds);
         }
 
         // Step 2d: Perform generic replacememnt: replace generics in the input

@@ -2,6 +2,11 @@ pub use proc_macro2_diagnostics::SpanDiagnosticExt;
 
 use syn::{*, spanned::Spanned, punctuated::Punctuated, token::Comma};
 use proc_macro2::{Span, TokenStream};
+use crate::Result;
+
+type TypeParamBounds = Punctuated<TypeParamBound, Token![+]>;
+
+type WherePredicates = Punctuated<WherePredicate, Token![,]>;
 
 pub trait PathExt {
     fn is(&self, global: bool, segments: &[&str]) -> bool;
@@ -19,11 +24,15 @@ pub trait TypeExt {
 }
 
 pub trait GenericsExt {
-    fn add_type_bound(&mut self, bounds: &TypeParamBound);
-    fn add_type_bounds(&mut self, bounds: &Punctuated<TypeParamBound, Token![+]>);
+    fn add_type_bound(&mut self, bounds: TypeParamBound);
+    fn add_type_bounds(&mut self, bounds: TypeParamBounds);
     fn replace(&mut self, ident: &Ident, with: &Ident);
     fn replace_lifetime(&mut self, n: usize, with: &Lifetime) -> bool;
     fn insert_lifetime(&mut self, lifetime: LifetimeDef);
+
+    fn bounded_types(&self, bounds: TypeParamBounds) -> WherePredicates;
+    fn parsed_bounded_types(&self, bounds: TokenStream) -> Result<WherePredicates>;
+    fn add_where_predicates(&mut self, predicates: WherePredicates);
 }
 
 pub trait AstItemExt {
@@ -58,25 +67,12 @@ impl<T: quote::ToTokens> AstItemExt for T {
 }
 
 impl GenericsExt for Generics {
-    fn add_type_bound(&mut self, bound: &TypeParamBound) {
-        let mut list = Punctuated::new();
-        list.push(bound.clone());
-        self.add_type_bounds(&list);
+    fn add_type_bound(&mut self, bound: TypeParamBound) {
+        self.add_type_bounds(Some(bound).into_iter().collect());
     }
 
-    fn add_type_bounds(&mut self, bounds: &Punctuated<TypeParamBound, Token![+]>) {
-        let bounds = self.type_params()
-            .map(|ty| {
-                let ident = &ty.ident;
-                let bounds = bounds.respanned_tokens(ty.span());
-                syn::parse2(quote_spanned!(ty.span() => #ident: #bounds))
-            })
-            .collect::<Result<Vec<_>>>()
-            .expect("valid where bound");
-
-        for bound in bounds {
-            self.make_where_clause().predicates.push(bound);
-        }
+    fn add_type_bounds(&mut self, bounds: TypeParamBounds) {
+        self.add_where_predicates(self.bounded_types(bounds))
     }
 
     fn replace(&mut self, ident: &Ident, with: &Ident) {
@@ -96,6 +92,35 @@ impl GenericsExt for Generics {
 
     fn insert_lifetime(&mut self, lifetime: LifetimeDef) {
         self.params.insert(0, lifetime.into());
+    }
+
+    fn parsed_bounded_types(&self, bounds: TokenStream) -> Result<WherePredicates> {
+        use syn::parse::Parser;
+        use quote::ToTokens;
+
+        let tokens = bounds.into_token_stream();
+        TypeParamBounds::parse_separated_nonempty.parse2(tokens)
+            .map(|bounds| self.bounded_types(bounds))
+            .map_err(|e| e.span().error(format!("invalid type param bounds: {}", e)))
+    }
+
+    fn bounded_types(&self, bounds: TypeParamBounds) -> WherePredicates {
+        self.type_params()
+            .map(|ty| {
+                let ident = &ty.ident;
+                let bounds = bounds.respanned_tokens(ty.span());
+                syn::parse2(quote_spanned!(ty.span() => #ident: #bounds))
+            })
+            .collect::<syn::Result<Vec<WherePredicate>>>()
+            .expect("valid where predicates")
+            .into_iter()
+            .collect()
+    }
+
+    fn add_where_predicates(&mut self, predicates: WherePredicates) {
+        for p in predicates {
+            self.make_where_clause().predicates.push(p);
+        }
     }
 }
 

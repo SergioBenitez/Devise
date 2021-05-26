@@ -1,8 +1,9 @@
 mod meta_item;
 
+use syn::parse::Parse;
 use syn::{self, Lit::*, spanned::Spanned};
 use proc_macro2_diagnostics::SpanDiagnosticExt;
-use proc_macro2::Span;
+use proc_macro2::{Span, TokenStream};
 
 use generator::Result;
 
@@ -139,12 +140,24 @@ impl<T: FromMeta> FromMeta for Option<T> {
     }
 }
 
+impl<T: Parse, P: Parse> FromMeta for syn::punctuated::Punctuated<T, P> {
+    fn from_meta(meta: &MetaItem) -> Result<Self> {
+        meta.parse_value_with(Self::parse_terminated, "punctuated list")
+    }
+}
+
 impl<T: FromMeta> FromMeta for SpanWrapped<T> {
     fn from_meta(meta: &MetaItem) -> Result<Self> {
         let span = meta.value_span();
         let key_span = meta.attr_path().map(|i| i.span());
         let full_span = meta.span();
         T::from_meta(meta).map(|value| SpanWrapped { full_span, key_span, span, value })
+    }
+}
+
+impl FromMeta for TokenStream {
+    fn from_meta(meta: &MetaItem) -> Result<Self> {
+        meta.parse_value("token stream")
     }
 }
 
