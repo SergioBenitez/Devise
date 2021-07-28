@@ -167,34 +167,11 @@ impl DeriveGenerator {
         }
 
         // Step 2: Generate the code!
-        // Step 2a: Generate the code for each function.
-        let mut function_code = vec![];
-        for mapper in &mut self.inner_mappers {
-            let tokens = mapper.map_input((&self.input).into())?;
-            function_code.push(tokens);
-        }
 
-        // Step 2b: Generate the code for each item.
-        let mut item_code = vec![];
-        for mapper in &mut self.outer_mappers {
-            let tokens = mapper.map_input((&self.input).into())?;
-            item_code.push(tokens);
-        }
-
-        // Step 2b: Copy user's generics to mutate with bounds + replacements.
+        // Step 2a: Copy user's generics to mutate with bounds + replacements.
         let mut type_generics = self.input.generics().clone();
 
-        // Step 2c: Add the requested type bounds.
-        if let Some(ref mut mapper) = self.type_bound_mapper {
-            let tokens = mapper.map_input((&self.input).into())?;
-            let bounds = Punctuated::<syn::WherePredicate, Token![,]>::parse_terminated
-                .parse2(tokens)
-                .map_err(|e| e.span().error(format!("invalid type bounds: {}", e)))?;
-
-            type_generics.add_where_predicates(bounds);
-        }
-
-        // Step 2d: Perform generic replacememnt: replace generics in the input
+        // Step 2b: Perform generic replacememnt: replace generics in the input
         // type with generics from the trait definition: 1) determine the
         // identifer of the generic to be replaced in the type. 2) replace every
         // identifer in the type with the same name with the identifer of the
@@ -214,6 +191,30 @@ impl DeriveGenerator {
             if let Some((with, ref to_replace)) = idents {
                 type_generics.replace(to_replace, with);
             }
+        }
+
+        // Step 2c.1: Generate the code for each function.
+        let mut function_code = vec![];
+        for mapper in &mut self.inner_mappers {
+            let tokens = mapper.map_input((&self.input).into())?;
+            function_code.push(tokens);
+        }
+
+        // Step 2c.2: Generate the code for each item.
+        let mut item_code = vec![];
+        for mapper in &mut self.outer_mappers {
+            let tokens = mapper.map_input((&self.input).into())?;
+            item_code.push(tokens);
+        }
+
+        // Step 2d: Add the requested type bounds.
+        if let Some(ref mut mapper) = self.type_bound_mapper {
+            let tokens = mapper.map_input((&self.input).into())?;
+            let bounds = Punctuated::<syn::WherePredicate, Token![,]>::parse_terminated
+                .parse2(tokens)
+                .map_err(|e| e.span().error(format!("invalid type bounds: {}", e)))?;
+
+            type_generics.add_where_predicates(bounds);
         }
 
         // Step 2e: Determine which generics from the type need to be added to
