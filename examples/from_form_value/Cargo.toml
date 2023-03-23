@@ -1,6 +1,6 @@
 [package]
 name = "from_form_value"
-version = "0.3.1"
+version = "0.0.0"
 authors = ["Sergio Benitez <sb@sergio.bz>"]
 publish = false
 

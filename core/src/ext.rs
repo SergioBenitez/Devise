@@ -28,7 +28,7 @@ pub trait GenericsExt {
     fn add_type_bounds(&mut self, bounds: TypeParamBounds);
     fn replace(&mut self, ident: &Ident, with: &Ident);
     fn replace_lifetime(&mut self, n: usize, with: &Lifetime) -> bool;
-    fn insert_lifetime(&mut self, lifetime: LifetimeDef);
+    fn insert_lifetime(&mut self, lifetime: LifetimeParam);
 
     fn bounded_types(&self, bounds: TypeParamBounds) -> WherePredicates;
     fn parsed_bounded_types(&self, bounds: TokenStream) -> Result<WherePredicates>;
@@ -90,7 +90,7 @@ impl GenericsExt for Generics {
         lifetime_ident.is_some()
     }
 
-    fn insert_lifetime(&mut self, lifetime: LifetimeDef) {
+    fn insert_lifetime(&mut self, lifetime: LifetimeParam) {
         self.params.insert(0, lifetime.into());
     }
 
@@ -148,8 +148,37 @@ pub trait Split6<A, B, C, D, E, F>: Sized + Iterator {
     fn split6(self) -> (Vec<A>, Vec<B>, Vec<C>, Vec<D>, Vec<E>, Vec<F>);
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum GenericKind { Lifetime, Type, Binding, Const, Constraint }
+#[derive(Copy, Clone)]
+#[non_exhaustive]
+pub enum GenericKind {
+    Lifetime,
+    Type,
+    Const,
+    AssocType,
+    AssocConst,
+    Constraint,
+    Unknown
+}
+
+impl PartialEq for GenericKind {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (GenericKind::Lifetime, GenericKind::Lifetime) => true,
+            (GenericKind::Type, GenericKind::Type) => true,
+            (GenericKind::Const, GenericKind::Const) => true,
+            (GenericKind::AssocType, GenericKind::AssocType) => true,
+            (GenericKind::AssocConst, GenericKind::AssocConst) => true,
+            (GenericKind::Constraint, GenericKind::Constraint) => true,
+            (GenericKind::Lifetime, _) => false,
+            (GenericKind::Type, _) => false,
+            (GenericKind::Const, _) => false,
+            (GenericKind::AssocType, _) => false,
+            (GenericKind::AssocConst, _) => false,
+            (GenericKind::Constraint, _) => false,
+            (GenericKind::Unknown, _) => false,
+        }
+    }
+}
 
 impl PathExt for Path {
     fn is(&self, global: bool, segments: &[&str]) -> bool {
@@ -280,9 +309,11 @@ impl GenericExt for GenericArgument {
         match *self {
             GenericArgument::Lifetime(..) => GenericKind::Lifetime,
             GenericArgument::Type(..) => GenericKind::Type,
-            GenericArgument::Binding(..) => GenericKind::Binding,
             GenericArgument::Constraint(..) => GenericKind::Constraint,
             GenericArgument::Const(..) => GenericKind::Const,
+            GenericArgument::AssocType(_) => GenericKind::AssocType,
+            GenericArgument::AssocConst(_) => GenericKind::AssocConst,
+            _ => GenericKind::Unknown,
         }
     }
 }

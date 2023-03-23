@@ -1,3 +1,5 @@
+use std::convert::TryFrom;
+
 use quote::{ToTokens, TokenStreamExt};
 use proc_macro2::{Span, TokenStream, TokenTree};
 use proc_macro2_diagnostics::{Diagnostic, SpanDiagnosticExt};
@@ -16,7 +18,7 @@ pub enum MetaItem {
     },
     List {
         path: syn::Path,
-        paren: syn::token::Paren,
+        delimiter: syn::MacroDelimiter,
         items: Punctuated<MetaItem, syn::token::Comma>
     }
 }
@@ -38,6 +40,18 @@ fn parse_delimited_tokens(input: syn::parse::ParseStream) -> syn::Result<TokenSt
     })
 }
 
+macro_rules! macro_delimited {
+    ($a:ident in $input:ident) => {
+        if $input.peek(syn::token::Brace) {
+            syn::MacroDelimiter::Brace(syn::braced!($a in $input))
+        } else if $input.peek(syn::token::Bracket) {
+            syn::MacroDelimiter::Bracket(syn::bracketed!($a in $input))
+        } else {
+            syn::MacroDelimiter::Paren(syn::parenthesized!($a in $input))
+        }
+    };
+}
+
 impl syn::parse::Parse for MetaItem {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let item = if let Ok(path) = input.parse::<syn::Path>() {
@@ -45,8 +59,8 @@ impl syn::parse::Parse for MetaItem {
                 let list;
                 MetaItem::List {
                     path,
-                    paren: syn::parenthesized!(list in input),
-                    items: list.parse_terminated(Self::parse)?
+                    delimiter: macro_delimited!(list in input),
+                    items: list.parse_terminated(Self::parse, syn::Token![,])?
                 }
             } else if input.peek(syn::Token![=]) {
                 MetaItem::KeyValue {
@@ -59,6 +73,28 @@ impl syn::parse::Parse for MetaItem {
             }
         } else {
             MetaItem::Tokens(parse_delimited_tokens(input)?)
+        };
+
+        Ok(item)
+    }
+}
+
+impl TryFrom<syn::Meta> for MetaItem {
+    type Error = syn::Error;
+
+    fn try_from(value: syn::Meta) -> std::result::Result<Self, Self::Error> {
+        let item = match value {
+            syn::Meta::Path(path) => MetaItem::Path(path),
+            syn::Meta::List(list) => MetaItem::List {
+                path: list.path,
+                delimiter: list.delimiter,
+                items: <Punctuated<Self, syn::Token![,]>>::parse_terminated.parse2(list.tokens)?,
+            },
+            syn::Meta::NameValue(nv) => MetaItem::KeyValue {
+                path: nv.path,
+                eq: nv.eq_token,
+                tokens: parse_delimited_tokens.parse2(nv.value.to_token_stream())?,
+            }
         };
 
         Ok(item)
@@ -107,12 +143,10 @@ impl MetaItem {
     }
 
     pub fn expected(&self, k: &str) -> Diagnostic {
-        let desc = self.description();
-        let msg = match self.name().map(|i| i.to_string()) {
-            Some(n) if self.is_bare() => format!("expected {}, found bare {} {:?}", k, desc, n),
-            Some(n) => format!("expected {}, found {} {:?}", k, desc, n),
-            None if self.is_bare() => format!("expected {}, found bare {}", k, self.description()),
-            None => format!("expected {}, found {}", k, self.description()),
+        let bare = self.is_bare().then_some("bare ").unwrap_or("");
+        let msg = match self.name() {
+            Some(n) => format!("expected {}, found {}{} {:?}", k, bare, self.description(), n),
+            None => format!("expected {}, found {}{}", k, bare, self.description()),
         };
 
         self.span().error(msg)
@@ -130,6 +164,7 @@ impl MetaItem {
                 syn::Lit::Float(..) => "float literal",
                 syn::Lit::Bool(..) => "boolean literal",
                 syn::Lit::Verbatim(..) => "literal",
+                _ => "unknown literal"
             }
         } else if expr.is_some() {
             "non-literal expression"
@@ -201,9 +236,15 @@ impl ToTokens for MetaItem {
                 eq.to_tokens(stream);
                 stream.append_all(tokens.clone());
             }
-            MetaItem::List { path, paren, items } => {
+            MetaItem::List { path, delimiter, items } => {
+                use syn::MacroDelimiter::*;
+
                 path.to_tokens(stream);
-                paren.surround(stream, |t| items.to_tokens(t));
+                match delimiter {
+                    Paren(p) => p.surround(stream, |t| items.to_tokens(t)),
+                    Brace(b) => b.surround(stream, |t| items.to_tokens(t)),
+                    Bracket(b) => b.surround(stream, |t| items.to_tokens(t)),
+                }
             }
         }
     }

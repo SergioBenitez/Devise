@@ -1,7 +1,7 @@
 #![allow(non_upper_case_globals)]
 
 bitflags! {
-    #[derive(Default)]
+    #[derive(Copy, Clone, Default)]
     pub struct Support: u8 {
         const None            = 0b0000_000;
         const Type            = 0b0000_001;

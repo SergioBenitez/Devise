@@ -1,5 +1,8 @@
 mod meta_item;
 
+use std::convert::TryFrom;
+use std::ops::{Deref, DerefMut};
+
 use syn::parse::Parse;
 use syn::{self, Lit::*, spanned::Spanned};
 use proc_macro2_diagnostics::SpanDiagnosticExt;
@@ -22,15 +25,10 @@ pub trait FromMeta: Sized {
     fn from_meta(meta: &MetaItem) -> Result<Self>;
 
     fn from_attr(attr: &syn::Attribute) -> Result<Self> {
-        let (path, inner_tokens) = (&attr.path, &attr.tokens);
-        let tokens = quote!(#path #inner_tokens);
-        Self::from_meta(&syn::parse2(tokens)?)
+        Self::from_meta(&MetaItem::try_from(attr.meta.clone())?)
     }
 
-    fn from_attrs(
-        name: &str,
-        attrs: &[syn::Attribute]
-    ) -> Result<Vec<Self>> {
+    fn from_attrs(name: &str, attrs: &[syn::Attribute]) -> Result<Vec<Self>> {
         let tokens = name.parse()
             .expect(&format!("`{}` contained invalid tokens", name));
 
@@ -38,7 +36,7 @@ pub trait FromMeta: Sized {
             .expect(&format!("`{}` was not a valid path", name));
 
         let items = attrs.iter()
-            .filter(|attr| attr.path == path)
+            .filter(|attr| attr.path() == &path)
             .map(|attr| Self::from_attr(attr))
             .collect::<Result<Vec<_>>>()?;
 
@@ -58,7 +56,7 @@ pub trait FromMeta: Sized {
         let path = syn::parse(tokens)
             .expect(&format!("`{}` was not a valid path", name));
 
-        let mut raw_attrs = attrs.iter().filter(|attr| attr.path == path);
+        let mut raw_attrs = attrs.iter().filter(|attr| attr.path() == &path);
         if let Some(attr) = raw_attrs.nth(1) {
             let msg = format!("duplicate invocation of `{}` attribute", name);
             return Err(attr.span().error(msg));
@@ -166,8 +164,6 @@ impl<T: ::quote::ToTokens> ::quote::ToTokens for SpanWrapped<T> {
         self.value.to_tokens(tokens)
     }
 }
-
-use std::ops::{Deref, DerefMut};
 
 impl<T> Deref for SpanWrapped<T> {
     type Target = T;
