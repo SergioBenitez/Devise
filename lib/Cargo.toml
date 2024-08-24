@@ -1,6 +1,6 @@
 [package]
 name = "devise"
-version = "0.4.1"
+version = "0.4.2"
 authors = ["Sergio Benitez <sb@sergio.bz>"]
 description = "A library for devising derives and other procedural macros."
 license = "MIT OR Apache-2.0"
@@ -8,5 +8,5 @@ repository = "https://github.com/SergioBenitez/Devise"
 readme = "../README.md"
 
 [dependencies]
-devise_core = { version = "0.4.1", path = "../core/" }
-devise_codegen = { version = "0.4.1", path = "../codegen" }
+devise_core = { version = "0.4.2", path = "../core/" }
+devise_codegen = { version = "0.4.2", path = "../codegen" }
