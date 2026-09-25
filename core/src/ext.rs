@@ -91,7 +91,7 @@ impl GenericsExt for Generics {
     }
 
     fn insert_lifetime(&mut self, lifetime: LifetimeParam) {
-        self.params.insert(0, lifetime.into());
+        self.params.insert(0, GenericParam::Lifetime(lifetime));
     }
 
     fn parsed_bounded_types(&self, bounds: TokenStream) -> Result<WherePredicates> {

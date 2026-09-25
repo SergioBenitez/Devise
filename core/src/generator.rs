@@ -26,7 +26,7 @@ impl TraitItem {
 
         let path = item.trait_.clone()
             .expect("impl does not have trait")
-            .1;
+            .0;
 
         let name = path.segments.last()
             .map(|s| s.ident.clone())

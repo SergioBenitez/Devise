@@ -1,6 +1,6 @@
 [package]
 name = "devise_core"
-version = "0.4.2"
+version = "0.5.0"
 edition = "2015"
 authors = ["Sergio Benitez <sb@sergio.bz>"]
 description = "A library for devising derives and other procedural macros."
@@ -11,6 +11,6 @@ readme = "../README.md"
 [dependencies]
 quote = "1.0"
 proc-macro2 = "1.0"
-proc-macro2-diagnostics = "0.10"
-syn = { version = "2.0", features = ["full", "parsing", "extra-traits", "visit-mut"] }
+proc-macro2-diagnostics = "0.11"
+syn = { version = "3.0", features = ["full", "parsing", "extra-traits", "visit-mut"] }
 bitflags = "2.0"
