@@ -50,13 +50,14 @@ pub fn derive_uri_display(input: TokenStream) -> TokenStream {
         )
         .inner_mapper(MapperBuild::new()
             .with_output(|_, output| quote! {
+                #[allow(clippy::needless_borrows_for_generic_args)]
                 fn fmt(&self, f: &mut Formatter) -> ::std::fmt::Result {
                     #output
                     Ok(())
                 }
             })
             .field_map(|_, field| {
-                let span = field.span().into();
+                let span = field.span();
                 let accessor = field.accessor();
                 if let Some(ref ident) = field.ident {
                     let name = ident.to_string();

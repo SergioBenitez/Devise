@@ -95,9 +95,9 @@ pub enum Input<'v> {
 impl<'v> From<&'v ItemInput> for Input<'v> {
     fn from(input: &'v ItemInput) -> Self {
         match input {
-            ItemInput::Struct(v) => Input::Struct(Derived::from(&v, input)),
-            ItemInput::Enum(v) => Input::Enum(Derived::from(&v, input)),
-            ItemInput::Union(v) => Input::Union(Derived::from(&v, input)),
+            ItemInput::Struct(v) => Input::Struct(Derived::from(v, input)),
+            ItemInput::Enum(v) => Input::Enum(Derived::from(v, input)),
+            ItemInput::Union(v) => Input::Union(Derived::from(v, input)),
         }
     }
 }

@@ -1,7 +1,7 @@
 #[macro_use] extern crate responder;
 
 pub mod rocket {
-    pub struct Request<'r>(&'r str);
+    pub struct Request<'r>(pub &'r str);
 
     pub mod http {
         pub struct ContentType(pub &'static str, pub &'static str);
@@ -10,9 +10,11 @@ pub mod rocket {
     }
 
     pub mod response {
-        pub type Result<'o> = std::result::Result<Response<'o>, ()>;
+        pub type Result<'o> = std::result::Result<Response<'o>, Error>;
 
-        pub struct Response<'r>(&'r str);
+        pub struct Error;
+
+        pub struct Response<'r>(pub &'r str);
 
         impl Response<'_> {
             pub fn set_header<T>(&mut self, _header: T) {}

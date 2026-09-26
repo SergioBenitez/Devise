@@ -30,10 +30,10 @@ pub trait FromMeta: Sized {
 
     fn from_attrs(name: &str, attrs: &[syn::Attribute]) -> Result<Vec<Self>> {
         let tokens = name.parse()
-            .expect(&format!("`{}` contained invalid tokens", name));
+            .unwrap_or_else(|_| panic!("`{}` contained invalid tokens", name));
 
         let path = syn::parse(tokens)
-            .expect(&format!("`{}` was not a valid path", name));
+            .unwrap_or_else(|_| panic!("`{}` was not a valid path", name));
 
         let items = attrs.iter()
             .filter(|attr| attr.path() == &path)
@@ -51,10 +51,10 @@ pub trait FromMeta: Sized {
 
     fn one_from_attrs(name: &str, attrs: &[syn::Attribute]) -> Result<Option<Self>> {
         let tokens = name.parse()
-            .expect(&format!("`{}` contained invalid tokens", name));
+            .unwrap_or_else(|_| panic!("`{}` contained invalid tokens", name));
 
         let path = syn::parse(tokens)
-            .expect(&format!("`{}` was not a valid path", name));
+            .unwrap_or_else(|_| panic!("`{}` was not a valid path", name));
 
         let mut raw_attrs = attrs.iter().filter(|attr| attr.path() == &path);
         if let Some(attr) = raw_attrs.nth(1) {
@@ -118,13 +118,13 @@ impl FromMeta for bool {
             return Ok(b.value);
         }
 
-        return Err(meta.value_span().error("invalid value: expected boolean"));
+        Err(meta.value_span().error("invalid value: expected boolean"))
     }
 }
 
 impl FromMeta for syn::Expr {
     fn from_meta(meta: &MetaItem) -> Result<Self> {
-        meta.expr().map(|v| v.clone())
+        meta.expr()
     }
 }
 

@@ -1,6 +1,7 @@
 [package]
 name = "devise"
 version = "0.4.2"
+edition = "2015"
 authors = ["Sergio Benitez <sb@sergio.bz>"]
 description = "A library for devising derives and other procedural macros."
 license = "MIT OR Apache-2.0"

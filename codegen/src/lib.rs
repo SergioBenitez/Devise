@@ -53,12 +53,12 @@ pub fn derive_from_meta(input: TokenStream) -> TokenStream {
                 }
 
                 let constructors = fields.iter().map(|f| {
-                    let (ident, span) = (f.ident.as_ref().unwrap(), f.span().into());
+                    let (ident, span) = (f.ident.as_ref().unwrap(), f.span());
                     quote_spanned!(span => #[allow(unused_assignments)] let mut #ident = None;)
                 });
 
                 let naked_matchers = fields.iter().filter(naked).map(|f| {
-                    let (ident, span) = (f.ident.as_ref().unwrap(), f.span().into());
+                    let (ident, span) = (f.ident.as_ref().unwrap(), f.span());
                     let (name, ty) = (ident.to_string(), &f.ty);
 
                     quote_spanned! { span =>
@@ -75,7 +75,7 @@ pub fn derive_from_meta(input: TokenStream) -> TokenStream {
                 });
 
                 let named_matchers = fields.iter().filter(|f| !naked(f)).map(|f| {
-                    let (ident, span) = (f.ident.as_ref().unwrap(), f.span().into());
+                    let (ident, span) = (f.ident.as_ref().unwrap(), f.span());
                     let (name, ty) = (ident.to_string(), &f.ty);
 
                     quote_spanned! { span =>
@@ -92,7 +92,7 @@ pub fn derive_from_meta(input: TokenStream) -> TokenStream {
                 });
 
                 let builders = fields.iter().map(|f| {
-                    let (ident, span) = (f.ident.as_ref().unwrap(), f.span().into());
+                    let (ident, span) = (f.ident.as_ref().unwrap(), f.span());
                     let name = ident.to_string();
 
                     quote_spanned! { span =>

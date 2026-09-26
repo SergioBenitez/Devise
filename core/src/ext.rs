@@ -145,6 +145,7 @@ pub trait Split4<A, B, C, D>: Sized + Iterator {
 }
 
 pub trait Split6<A, B, C, D, E, F>: Sized + Iterator {
+    #[allow(clippy::type_complexity)]
     fn split6(self) -> (Vec<A>, Vec<B>, Vec<C>, Vec<D>, Vec<E>, Vec<F>);
 }
 
@@ -331,9 +332,9 @@ impl GenericExt for GenericParam {
 impl GenericParamExt for GenericParam {
     fn ident(&self) -> &Ident {
         match self {
-            &GenericParam::Type(ref ty) => &ty.ident,
-            &GenericParam::Lifetime(ref l) => &l.lifetime.ident,
-            &GenericParam::Const(ref c) => &c.ident,
+            GenericParam::Type(ty) => &ty.ident,
+            GenericParam::Lifetime(l) => &l.lifetime.ident,
+            GenericParam::Const(c) => &c.ident,
         }
     }
 }

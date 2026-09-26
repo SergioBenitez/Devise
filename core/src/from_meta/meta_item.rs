@@ -143,7 +143,7 @@ impl MetaItem {
     }
 
     pub fn expected(&self, k: &str) -> Diagnostic {
-        let bare = self.is_bare().then_some("bare ").unwrap_or("");
+        let bare = if self.is_bare() { "bare " } else { "" };
         let msg = match self.name().map(|i| i.to_string()) {
             Some(n) => format!("expected {}, found {}{} {:?}", k, bare, self.description(), n),
             None => format!("expected {}, found {}{}", k, bare, self.description()),

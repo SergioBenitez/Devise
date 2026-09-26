@@ -252,7 +252,7 @@ impl DeriveGenerator {
 
     pub fn debug(&mut self) -> &mut Self {
         match self._to_tokens() {
-            Ok(tokens) => println!("Tokens produced: {}", tokens.to_string()),
+            Ok(tokens) => println!("Tokens produced: {}", tokens),
             Err(e) => println!("Error produced: {:?}", e)
         }
 

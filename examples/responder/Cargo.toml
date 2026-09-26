@@ -1,6 +1,7 @@
 [package]
 name = "responder"
 version = "0.0.0"
+edition = "2015"
 authors = ["Sergio Benitez <sb@sergio.bz>"]
 publish = false
 

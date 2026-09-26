@@ -22,7 +22,7 @@ pub mod rocket {
 }
 
 #[derive(FromFormValue)]
-enum Foo {
+pub enum Foo {
     OptionA,
     ThenB,
     Other

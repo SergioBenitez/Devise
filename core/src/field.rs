@@ -51,8 +51,8 @@ pub(crate) enum FieldsKind<'p> {
 impl<'a> From<&'a syn::Fields> for FieldsKind<'a> {
     fn from(fields: &'a syn::Fields) -> Self {
         match fields {
-            syn::Fields::Named(fs) => FieldsKind::Named(&fs),
-            syn::Fields::Unnamed(fs) => FieldsKind::Unnamed(&fs),
+            syn::Fields::Named(fs) => FieldsKind::Named(fs),
+            syn::Fields::Unnamed(fs) => FieldsKind::Unnamed(fs),
             syn::Fields::Unit => FieldsKind::Unit,
         }
     }
@@ -111,24 +111,15 @@ impl<'f> Fields<'f> {
     }
 
     pub fn are_named(self) -> bool {
-        match self.kind {
-            FieldsKind::Named(..) => true,
-            _ => false
-        }
+        matches!(self.kind, FieldsKind::Named(..))
     }
 
     pub fn are_unnamed(self) -> bool {
-        match self.kind {
-            FieldsKind::Unnamed(..) => true,
-            _ => false
-        }
+        matches!(self.kind, FieldsKind::Unnamed(..))
     }
 
     pub fn are_unit(self) -> bool {
-        match self.kind {
-            FieldsKind::Unit => true,
-            _ => false
-        }
+        matches!(self.kind, FieldsKind::Unit)
     }
 
     fn surround(self, tokens: TokenStream) -> TokenStream {
@@ -185,7 +176,7 @@ impl<'f> Field<'f> {
             None => format!("__{}", self.index)
         };
 
-        syn::Ident::new(&name, self.span().into())
+        syn::Ident::new(&name, self.span())
     }
 
     pub fn accessor(&self) -> TokenStream {
@@ -193,7 +184,7 @@ impl<'f> Field<'f> {
             let ident = self.match_ident();
             quote!(#ident)
         } else {
-            let span = self.field.span().into();
+            let span = self.field.span();
             let member = match self.ident {
                 Some(ref ident) => Member::Named(ident.clone()),
                 None => Member::Unnamed(Index { index: self.index as u32, span })

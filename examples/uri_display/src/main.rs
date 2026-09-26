@@ -85,7 +85,7 @@ impl UriDisplay for str {
     }
 }
 
-impl<'a> UriDisplay for &'a str {
+impl UriDisplay for &str {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         UriDisplay::fmt(*self, f)
     }
@@ -98,12 +98,12 @@ impl UriDisplay for u8 {
     }
 }
 
-impl<'a, T: UriDisplay> UriDisplay for &'a T {
+impl<T: UriDisplay> UriDisplay for &T {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         UriDisplay::fmt(*self, f)
     }
 }
-impl<'a> fmt::Display for &'a dyn UriDisplay {
+impl fmt::Display for &dyn UriDisplay {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = Formatter {
             prefixes: Vec::new(),
